@@ -273,32 +273,29 @@ button, input { font-family: inherit; }
 }
 .composer button[type="submit"]:hover { filter: brightness(1.06); }
 .mic-btn {
-  width: 44px;
+  min-width: 88px;
   height: 44px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--ink);
-  border-radius: 50%;
-  padding: 0;
-  display: grid;
-  place-items: center;
+  border: 1px solid var(--gold);
+  background: color-mix(in srgb, var(--gold) 16%, var(--bg));
+  color: var(--gold-2);
+  border-radius: 999px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   cursor: pointer;
+  font: 700 12px Montserrat, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-.mic-btn svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-}
+.mic-btn:hover { filter: brightness(1.08); }
 .mic-btn.listening {
   color: var(--on-accent);
   background: var(--gold);
   border-color: var(--gold);
   animation: mic-pulse 1.2s ease-in-out infinite;
 }
-.mic-btn.unsupported { display: none; }
 @keyframes mic-pulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 45%, transparent); }
   50% { box-shadow: 0 0 0 8px transparent; }
@@ -398,7 +395,7 @@ button, input { font-family: inherit; }
   .composer input,
   .composer button[type="submit"] { min-height: 44px; font-size: 16px; }
   .composer button[type="submit"] { font-size: 12px; padding: 8px 14px; }
-  .mic-btn { width: 44px; height: 44px; min-height: 44px; }
+  .mic-btn { min-width: 80px; min-height: 44px; }
   .clear-btn { min-height: 36px; }
   .check { width: 24px; height: 24px; }
   .task { padding: 8px 6px; }

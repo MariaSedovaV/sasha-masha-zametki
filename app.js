@@ -153,20 +153,30 @@ document.addEventListener("click", (e) => {
   });
 });
 
-const SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+function speechEngine() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
 let activeMic = null;
 
 function stopMic() {
   if (!activeMic) return;
   try { activeMic.rec.stop(); } catch {}
   activeMic.btn.classList.remove("listening");
+  activeMic.btn.textContent = "Голос";
+  const input = $("input", activeMic.btn.closest(".board"));
+  if (input) input.placeholder = "Новое дело…";
   activeMic = null;
 }
 
 function startVoice(board, person) {
+  const SpeechAPI = speechEngine();
   const btn = $("[data-mic]", board);
   const input = $("input", board);
-  if (!SpeechAPI) return;
+  if (!SpeechAPI) {
+    window.alert("Голосовой ввод работает в Chrome или Safari. В Firefox его нет — напишите дело текстом.");
+    return;
+  }
   if (activeMic && activeMic.btn === btn) {
     stopMic();
     return;
@@ -179,37 +189,45 @@ function startVoice(board, person) {
   rec.maxAlternatives = 1;
   rec.onstart = () => {
     btn.classList.add("listening");
-    input.placeholder = "Слушаю…";
+    btn.textContent = "Слушаю";
+    input.placeholder = "Говорите…";
   };
   rec.onresult = (event) => {
     let transcript = "";
+    let isFinal = false;
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
       transcript += event.results[i][0].transcript;
-      if (event.results[i].isFinal) {
-        addTask(person, transcript);
-        input.value = "";
-        return;
-      }
+      if (event.results[i].isFinal) isFinal = true;
     }
     input.value = transcript.trim();
+    if (isFinal && input.value) {
+      addTask(person, input.value);
+      input.value = "";
+    }
   };
-  rec.onerror = () => stopMic();
+  rec.onerror = (event) => {
+    if (event.error === "not-allowed") {
+      window.alert("Нужно разрешить микрофон в настройках браузера — иначе голос не услышать.");
+    }
+    stopMic();
+  };
   rec.onend = () => {
+    if (input.value.trim()) {
+      addTask(person, input.value);
+      input.value = "";
+    }
     input.placeholder = "Новое дело…";
     btn.classList.remove("listening");
+    btn.textContent = "Голос";
     if (activeMic && activeMic.rec === rec) activeMic = null;
   };
   activeMic = { rec, btn };
   try { rec.start(); } catch { stopMic(); }
 }
 
-if (!SpeechAPI) {
-  document.querySelectorAll("[data-mic]").forEach((btn) => btn.classList.add("unsupported"));
-} else {
-  document.querySelectorAll(".board").forEach((board) => {
-    $("[data-mic]", board).addEventListener("click", (e) => {
-      e.preventDefault();
-      startVoice(board, board.dataset.person);
-    });
+document.querySelectorAll(".board").forEach((board) => {
+  $("[data-mic]", board).addEventListener("click", (e) => {
+    e.preventDefault();
+    startVoice(board, board.dataset.person);
   });
-}
+});
