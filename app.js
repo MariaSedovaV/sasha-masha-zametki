@@ -231,3 +231,11 @@ document.querySelectorAll(".board").forEach((board) => {
     startVoice(board, board.dataset.person);
   });
 });
+
+window.sashaNotesReload = function () {
+  const fresh = load();
+  state.sasha = fresh.sasha;
+  state.masha = fresh.masha;
+  renderBoard("sasha");
+  renderBoard("masha");
+};
