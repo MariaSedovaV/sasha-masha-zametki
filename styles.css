@@ -242,7 +242,7 @@ button, input { font-family: inherit; }
 
 .composer {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -260,7 +260,7 @@ button, input { font-family: inherit; }
   border-color: var(--gold);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent);
 }
-.composer button {
+.composer button[type="submit"] {
   border: 0;
   background: var(--gold);
   color: var(--on-accent);
@@ -271,7 +271,38 @@ button, input { font-family: inherit; }
   text-transform: uppercase;
   cursor: pointer;
 }
-.composer button:hover { filter: brightness(1.06); }
+.composer button[type="submit"]:hover { filter: brightness(1.06); }
+.mic-btn {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  border-radius: 50%;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.mic-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+.mic-btn.listening {
+  color: var(--on-accent);
+  background: var(--gold);
+  border-color: var(--gold);
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+.mic-btn.unsupported { display: none; }
+@keyframes mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--gold) 45%, transparent); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
 
 .tasks {
   list-style: none;
@@ -365,8 +396,9 @@ button, input { font-family: inherit; }
   .board h2 { font-size: 20px; }
   .board-head { margin-bottom: 10px; }
   .composer input,
-  .composer button { min-height: 44px; font-size: 16px; }
-  .composer button { font-size: 12px; padding: 8px 14px; }
+  .composer button[type="submit"] { min-height: 44px; font-size: 16px; }
+  .composer button[type="submit"] { font-size: 12px; padding: 8px 14px; }
+  .mic-btn { width: 44px; height: 44px; min-height: 44px; }
   .clear-btn { min-height: 36px; }
   .check { width: 24px; height: 24px; }
   .task { padding: 8px 6px; }

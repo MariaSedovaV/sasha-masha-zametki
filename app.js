@@ -152,3 +152,64 @@ document.addEventListener("click", (e) => {
     b.textContent = "Очистить";
   });
 });
+
+const SpeechAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+let activeMic = null;
+
+function stopMic() {
+  if (!activeMic) return;
+  try { activeMic.rec.stop(); } catch {}
+  activeMic.btn.classList.remove("listening");
+  activeMic = null;
+}
+
+function startVoice(board, person) {
+  const btn = $("[data-mic]", board);
+  const input = $("input", board);
+  if (!SpeechAPI) return;
+  if (activeMic && activeMic.btn === btn) {
+    stopMic();
+    return;
+  }
+  stopMic();
+  const rec = new SpeechAPI();
+  rec.lang = "ru-RU";
+  rec.interimResults = true;
+  rec.continuous = false;
+  rec.maxAlternatives = 1;
+  rec.onstart = () => {
+    btn.classList.add("listening");
+    input.placeholder = "Слушаю…";
+  };
+  rec.onresult = (event) => {
+    let transcript = "";
+    for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      transcript += event.results[i][0].transcript;
+      if (event.results[i].isFinal) {
+        addTask(person, transcript);
+        input.value = "";
+        return;
+      }
+    }
+    input.value = transcript.trim();
+  };
+  rec.onerror = () => stopMic();
+  rec.onend = () => {
+    input.placeholder = "Новое дело…";
+    btn.classList.remove("listening");
+    if (activeMic && activeMic.rec === rec) activeMic = null;
+  };
+  activeMic = { rec, btn };
+  try { rec.start(); } catch { stopMic(); }
+}
+
+if (!SpeechAPI) {
+  document.querySelectorAll("[data-mic]").forEach((btn) => btn.classList.add("unsupported"));
+} else {
+  document.querySelectorAll(".board").forEach((board) => {
+    $("[data-mic]", board).addEventListener("click", (e) => {
+      e.preventDefault();
+      startVoice(board, board.dataset.person);
+    });
+  });
+}
