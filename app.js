@@ -29,7 +29,10 @@ function plural(n, one, few, many) {
 
 function load() {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+    const cloud = window.SashaCloud && typeof window.SashaCloud.snapshot === "function"
+      ? window.SashaCloud.snapshot().notes
+      : null;
+    const raw = cloud || JSON.parse(localStorage.getItem(STORE_KEY) || "null");
     return {
       sasha: Array.isArray(raw?.sasha) ? raw.sasha : [],
       masha: Array.isArray(raw?.masha) ? raw.masha : [],
@@ -40,7 +43,13 @@ function load() {
 }
 
 function save(state) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+  localStorage.setItem(STORE_KEY, JSON.stringify({
+    sasha: state.sasha.filter((t) => !t.deleted),
+    masha: state.masha.filter((t) => !t.deleted),
+  }));
+  if (window.SashaCloud && typeof window.SashaCloud.replaceNotes === "function") {
+    window.SashaCloud.replaceNotes({ sasha: state.sasha, masha: state.masha });
+  }
 }
 
 function uid() {
@@ -61,7 +70,7 @@ const CHECK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l5 5 
 
 function renderBoard(person) {
   const root = document.querySelector(`.board[data-person="${person}"]`);
-  const items = state[person];
+  const items = state[person].filter((t) => !t.deleted);
   const open = items.filter((t) => !t.done).length;
   const list = $("[data-list]", root);
   const count = $("[data-count]", root);
@@ -83,7 +92,7 @@ function renderBoard(person) {
 function addTask(person, text) {
   const clean = text.replace(/\s+/g, " ").trim();
   if (!clean) return;
-  state[person].push({ id: uid(), text: clean, done: false, at: Date.now() });
+  state[person].push({ id: uid(), text: clean, done: false, at: Date.now(), updatedAt: Date.now() });
   save(state);
   renderBoard(person);
 }
@@ -92,12 +101,17 @@ function toggleTask(person, id) {
   const item = state[person].find((t) => t.id === id);
   if (!item) return;
   item.done = !item.done;
+  item.updatedAt = Date.now();
   save(state);
   renderBoard(person);
 }
 
 function clearBoard(person) {
-  state[person] = [];
+  const now = Date.now();
+  state[person].forEach((t) => {
+    t.deleted = true;
+    t.updatedAt = now;
+  });
   save(state);
   renderBoard(person);
 }
@@ -129,7 +143,7 @@ document.querySelectorAll(".board").forEach((board) => {
 
   const clearBtn = $("[data-clear]", board);
   clearBtn.addEventListener("click", () => {
-    if (!state[person].length) return;
+    if (!state[person].filter((t) => !t.deleted).length) return;
     if (!clearBtn.classList.contains("armed")) {
       document.querySelectorAll(".clear-btn.armed").forEach((b) => {
         b.classList.remove("armed");
