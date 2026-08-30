@@ -23,6 +23,8 @@
     const a = ["ghp", "DVug0NHyTKn", "Dy0DEpid6MUW", "rYnYwd70LiOfV"];
     return a[0] + "_" + a.slice(1).join("");
   }
+
+  function empty() {
     return {
       notes: { sasha: [], masha: [] },
       budgetAdds: [],
