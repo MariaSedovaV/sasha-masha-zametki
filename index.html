@@ -13,7 +13,7 @@
   <script>
     document.documentElement.dataset.theme = localStorage.getItem("sasha-theme") || "dark";
   </script>
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4" />
 </head>
 <body>
   <header class="site-chrome">
@@ -22,6 +22,7 @@
       <span class="brand-rest"><span class="brand-sep">|</span> <span class="brand-page">Заметки</span></span>
     </div>
     <div class="chrome-actions">
+      <span class="sync-status" data-sync aria-live="polite">сохраняется здесь</span>
       <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Переключить тему">Светлая</button>
       <a class="home-link" href="https://mariasedovav.github.io/sasha-masha/" aria-label="На главную">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 11.2 12 4.8l7.5 6.4V20a1 1 0 0 1-1 1h-5.2v-6.2H10.7V21H5.5a1 1 0 0 1-1-1v-8.8Z"/></svg>
@@ -71,8 +72,8 @@
     </section>
   </main>
 
-  <script src="sync.js?v=7"></script>
-  <script src="app.js?v=7"></script>
-  <script src="assistant.js?v=7"></script>
+  <script src="sync.js?v=9"></script>
+  <script src="app.js?v=9"></script>
+  <script src="assistant.js?v=9"></script>
 </body>
 </html>

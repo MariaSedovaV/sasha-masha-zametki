@@ -47,8 +47,8 @@ function save(state) {
     sasha: state.sasha.filter((t) => !t.deleted),
     masha: state.masha.filter((t) => !t.deleted),
   }));
-  if (window.SashaCloud && typeof window.SashaCloud.replaceNotes === "function") {
-    window.SashaCloud.replaceNotes({ sasha: state.sasha, masha: state.masha });
+  if (window.SashaCloud && typeof window.SashaCloud.setNotes === "function") {
+    window.SashaCloud.setNotes({ sasha: state.sasha, masha: state.masha });
   }
 }
 
@@ -85,6 +85,7 @@ function renderBoard(person) {
     <li class="task ${t.done ? "done" : ""}" data-id="${t.id}">
       <button type="button" class="check" aria-label="${t.done ? "Вернуть в открытые" : "Отметить сделанным"}">${CHECK}</button>
       <span class="task-text">${escapeHtml(t.text)}</span>
+      <button type="button" class="task-del" aria-label="Удалить">×</button>
     </li>
   `).join("");
 }
@@ -101,6 +102,15 @@ function toggleTask(person, id) {
   const item = state[person].find((t) => t.id === id);
   if (!item) return;
   item.done = !item.done;
+  item.updatedAt = Date.now();
+  save(state);
+  renderBoard(person);
+}
+
+function deleteTask(person, id) {
+  const item = state[person].find((t) => t.id === id);
+  if (!item) return;
+  item.deleted = true;
   item.updatedAt = Date.now();
   save(state);
   renderBoard(person);
@@ -135,6 +145,12 @@ document.querySelectorAll(".board").forEach((board) => {
   });
 
   $("[data-list]", board).addEventListener("click", (e) => {
+    const del = e.target.closest(".task-del");
+    if (del) {
+      const id = del.closest(".task")?.dataset.id;
+      if (id) deleteTask(person, id);
+      return;
+    }
     const btn = e.target.closest(".check");
     if (!btn) return;
     const id = btn.closest(".task")?.dataset.id;
@@ -246,10 +262,26 @@ document.querySelectorAll(".board").forEach((board) => {
   });
 });
 
+function renderSync() {
+  const el = document.querySelector("[data-sync]");
+  if (!el) return;
+  const st = window.SashaCloud && typeof window.SashaCloud.status === "function"
+    ? window.SashaCloud.status()
+    : { ok: false };
+  el.textContent = st.ok ? "на всех устройствах" : "сохраняется здесь";
+  el.dataset.ok = st.ok ? "1" : "0";
+}
+
 window.sashaNotesReload = function () {
   const fresh = load();
   state.sasha = fresh.sasha;
   state.masha = fresh.masha;
   renderBoard("sasha");
   renderBoard("masha");
+  renderSync();
 };
+
+if (window.SashaCloud && typeof window.SashaCloud.subscribe === "function") {
+  window.SashaCloud.subscribe(renderSync);
+}
+renderSync();

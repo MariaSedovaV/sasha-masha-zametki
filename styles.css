@@ -112,6 +112,15 @@ button, input { font-family: inherit; }
   color: var(--muted);
   white-space: nowrap;
 }
+.sync-status {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.sync-status[data-ok="1"] { color: var(--sage); }
 .chrome-actions {
   display: flex;
   align-items: center;
@@ -314,7 +323,7 @@ button, input { font-family: inherit; }
 }
 .task {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: 28px 1fr auto;
   gap: 10px;
   align-items: flex-start;
   padding: 10px 10px;
@@ -363,6 +372,23 @@ button, input { font-family: inherit; }
   font-weight: 500;
   word-break: break-word;
 }
+.task-del {
+  width: 28px;
+  height: 28px;
+  margin-top: -2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.task-del:hover {
+  color: var(--rose);
+  background: color-mix(in srgb, var(--rose) 14%, transparent);
+}
 .empty {
   margin: 18px 8px;
   color: var(--muted);
@@ -401,6 +427,7 @@ button, input { font-family: inherit; }
   .task { padding: 8px 6px; }
   .home-link { width: 40px; height: 40px; }
   .theme-toggle { min-height: 40px; padding: 8px 12px; font-size: 12px; }
+  .sync-status { display: none; }
   .brand-page { font-size: 14px; }
   .site-chrome { padding: 10px 12px; padding-top: max(10px, env(safe-area-inset-top)); }
 }
