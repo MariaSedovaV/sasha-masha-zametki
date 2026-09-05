@@ -9,6 +9,7 @@
     zametki: "https://mariasedovav.github.io/sasha-masha-zametki/",
     remont: "https://mariasedovav.github.io/sasha-masha/remont/",
     goals: HOME + "#цели",
+    calendar: HOME + "#календарь",
   };
 
   const EXPENSE_CATS = [
@@ -154,7 +155,7 @@
     if (!n) return { say: "Скажите ещё раз — я не расслышала." };
 
     if (/(помощ|умеешь|сценари|что можешь|help)/.test(n)) {
-      return { say: "Могу открыть бюджет, питание, заметки, ремонт или цели. Добавить дело Саше или Маше. Записать трату в категорию этого месяца. Интернет сама не ищу — но могу открыть поиск Яндекса." };
+      return { say: "Могу открыть бюджет, питание, заметки, ремонт, календарь или цели. Добавить дело Саше или Маше. Записать трату в категорию этого месяца. Интернет сама не ищу — но могу открыть поиск Яндекса." };
     }
     if (/(найди|погугли|поиск|что такое|кто такой|загугли)/.test(n)) {
       const q = text.replace(/^(найди|погугли|поиск|что такое|кто такой|загугли)\s+/i, "").trim() || text;
@@ -171,6 +172,9 @@
     }
     if (/(ремонт|чек.?лист|whitebox|отделк|мебел)/.test(n) && !/(добав|запиш|напомн|потрат)/.test(n)) {
       return { say: already(LINKS.remont) ? "Мы уже в ремонте." : "Открываю ремонт.", open: LINKS.remont };
+    }
+    if (/(календар|событи|встреч)/.test(n) && !/(добав|запиш)/.test(n)) {
+      return { say: "Открываю календарь.", calendar: true };
     }
     if (/(цел[иь]|горизонт|желани)/.test(n) && !/(добав|новую цель)/.test(n)) {
       return { say: "Открываю цели.", goals: true };
@@ -277,6 +281,7 @@ html.assist-open,html.assist-open body{overflow:hidden}
           <button type="button" data-assist="открой питание">питание</button>
           <button type="button" data-assist="открой заметки">заметки</button>
           <button type="button" data-assist="открой ремонт">ремонт</button>
+          <button type="button" data-assist="открой календарь">календарь</button>
           <button type="button" data-assist="открой цели">цели</button>
           <button type="button" data-assist="добавь Маше купить молоко">дело Маше</button>
           <button type="button" data-assist="запиши 1500 в такси">трата</button>
@@ -331,6 +336,11 @@ html.assist-open,html.assist-open body{overflow:hidden}
       addMsg("bot", res.say);
       if (fromVoice) speak(res.say);
       if (res.theme) document.getElementById("theme-toggle")?.click();
+      if (res.calendar) {
+        const btn = document.getElementById("open-calendar");
+        if (btn) btn.click();
+        else location.href = LINKS.calendar;
+      }
       if (res.goals) {
         const btn = document.getElementById("open-goals");
         if (btn) btn.click();
