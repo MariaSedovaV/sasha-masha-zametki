@@ -432,7 +432,7 @@ function renderBoard(person) {
               </span>
             </button>`}
         <div class="task-meta">
-          <span class="task-author ${author}">${escapeHtml(personName(author))}</span>
+          <span class="task-byline ${author}"><span class="task-byline-k">Автор</span> ${escapeHtml(personName(author))}</span>
           ${due ? `<span class="task-due ${due.cls}" ${renaming ? "" : "data-expand"} title="${escapeHtml(due.title)}">${escapeHtml(due.label)}</span>` : ""}
           ${archivedView && doneLabel ? `<span class="task-done-at">${escapeHtml(doneLabel)}</span>` : ""}
         </div>
@@ -742,6 +742,7 @@ function disarmDelete(btn) {
   btn.classList.remove("armed");
   btn.setAttribute("aria-label", "Удалить");
   btn.textContent = "×";
+  btn.closest(".task")?.classList.remove("confirm-del");
 }
 
 function renderWho() {
@@ -824,8 +825,9 @@ document.querySelectorAll(".board").forEach((board) => {
       if (!btn.classList.contains("armed")) {
         list.querySelectorAll(".task-del.armed").forEach(disarmDelete);
         btn.classList.add("armed");
+        btn.closest(".task")?.classList.add("confirm-del");
         btn.setAttribute("aria-label", "Точно удалить?");
-        btn.textContent = "Точно?";
+        btn.textContent = "Удалить?";
         return;
       }
       deleteTask(person, id);
