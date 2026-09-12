@@ -200,6 +200,8 @@ function formatDue(iso) {
 }
 
 const CHECK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l5 5 9-11"/></svg>`;
+const CHEVRON = `<svg class="task-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6.5 15 12 9 17.5"/></svg>`;
+const PENCIL = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.6 5.4 18.6 10.4M4 20l.9-4.3L15.5 5.1a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.3 19.1 4 20z"/></svg>`;
 
 function renderBlocks(blocks, interactive) {
   if (!blocks.length) return "";
@@ -288,10 +290,15 @@ function renderBoard(person) {
               <input class="task-title-input" data-title-input maxlength="180" value="${escapeHtml(titleValue)}" aria-label="Текст дела" />
               <button type="button" class="task-rename-save" data-rename-save aria-label="Сохранить название">${CHECK}</button>
             </div>`
-          : `<button type="button" class="task-text" data-title title="Нажмите, чтобы изменить">${escapeHtml(t.text)}</button>`}
-        ${due ? `<span class="task-due ${due.cls}" title="${escapeHtml(due.title)}">${escapeHtml(due.label)}</span>` : ""}
+          : `<button type="button" class="task-hit ${hasExtra ? "has-extra" : ""}" data-expand aria-expanded="${opened ? "true" : "false"}" title="Нажмите, чтобы открыть пояснение и срок">
+              <span class="task-hit-top">
+                <span class="task-text">${escapeHtml(t.text)}</span>
+                ${CHEVRON}
+              </span>
+            </button>`}
+        ${due ? `<span class="task-due ${due.cls}" ${renaming ? "" : "data-expand"} title="${escapeHtml(due.title)}">${escapeHtml(due.label)}</span>` : ""}
       </div>
-      <button type="button" class="task-info ${hasExtra ? "has-extra" : ""}" data-info aria-expanded="${opened ? "true" : "false"}" aria-label="Пояснение и срок"><span>i</span></button>
+      ${renaming ? `<span class="task-icon-slot" aria-hidden="true"></span>` : `<button type="button" class="task-rename-btn" data-rename aria-label="Изменить название" title="Изменить название">${PENCIL}</button>`}
       <button type="button" class="task-del" aria-label="Удалить">×</button>
       ${opened ? renderExtra(person, t, editing) : ""}
     </li>`;
@@ -558,17 +565,17 @@ document.querySelectorAll(".board").forEach((board) => {
       deleteTask(person, id);
       return;
     }
-    if (e.target.closest("[data-info]")) {
-      if (ui.rename === taskKey(person, id)) commitRename(person, id);
-      toggleInfo(person, id);
+    if (e.target.closest("[data-rename]")) {
+      startRename(person, id);
       return;
     }
     if (e.target.closest("[data-rename-save]")) {
       commitRename(person, id);
       return;
     }
-    if (e.target.closest("[data-title]")) {
-      startRename(person, id);
+    if (e.target.closest("[data-expand]")) {
+      if (ui.rename === taskKey(person, id)) commitRename(person, id);
+      toggleInfo(person, id);
       return;
     }
     if (e.target.closest(".check") && !e.target.closest(".detail-check")) {
