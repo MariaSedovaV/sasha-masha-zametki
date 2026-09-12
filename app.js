@@ -6,10 +6,15 @@ const BULLET_RE = /^\s*(?:[-–—*•]|—)\s+(.*)$/;
 const ui = {
   open: new Set(),
   editing: null,
-  draft: new Map(),
+  drafts: new Map(),
   rename: null,
   renameDraft: new Map(),
+  pendingReload: false,
 };
+
+function isBusy() {
+  return ui.open.size > 0 || Boolean(ui.rename);
+}
 
 function $(sel, root = document) {
   return root.querySelector(sel);
@@ -190,35 +195,24 @@ function renderBlocks(blocks, interactive) {
 }
 
 function renderExtra(person, t, editing) {
-  const due = t.due || "";
+  const d = ensureDraft(person, t.id);
+  const due = d.due || "";
   const blocks = Array.isArray(t.details) ? t.details : [];
-  const key = taskKey(person, t.id);
-  const draft = ui.draft.has(key) ? ui.draft.get(key) : serializeDetails(blocks);
   const showEditor = editing || !blocks.length;
   const view = showEditor
     ? `
       <label class="detail-editor detail-compose">
         <span>Пояснение</span>
-        <textarea data-details-input rows="10" maxlength="4000" placeholder="Зачем это дело и что не забыть. Новая строка с тире станет пунктом:&#10;— позвонить в кассу&#10;— взять паспорт">${escapeHtml(draft)}</textarea>
-        <small class="detail-hint">Тире в начале строки станет пунктом. Enter продолжит список, галочки появятся после сохранения.</small>
-      </label>
-      <div class="detail-actions">
-        <button type="button" class="detail-btn primary" data-save-details>Сохранить</button>
-        ${blocks.length ? `<button type="button" class="detail-btn" data-cancel-edit>Отмена</button>` : ""}
-        ${blocks.length ? `<button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>` : ""}
-      </div>`
-    : `
-      <div class="detail-view">${renderBlocks(blocks, true)}</div>
-      <div class="detail-actions">
-        <button type="button" class="detail-btn" data-edit>Изменить</button>
-        <button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>
-      </div>`;
+        <textarea data-details-input rows="10" maxlength="4000" placeholder="Зачем это дело и что не забыть. Новая строка с тире станет пунктом:&#10;— позвонить в кассу&#10;— взять паспорт">${escapeHtml(d.details)}</textarea>
+        <small class="detail-hint">Тире в начале строки станет пунктом. Галочка сохранит дело, срок и пояснение.</small>
+      </label>`
+    : `<div class="detail-view">${renderBlocks(blocks, true)}</div>`;
 
   return `
     <div class="task-extra">
       <label class="detail-editor">
         <span>Дело</span>
-        <input type="text" data-title-field maxlength="180" value="${escapeHtml(t.text)}" aria-label="Текст дела" />
+        <input type="text" data-title-field maxlength="180" value="${escapeHtml(d.title)}" aria-label="Текст дела" />
       </label>
       <div class="detail-due-row">
         <label class="detail-due">
@@ -230,11 +224,21 @@ function renderExtra(person, t, editing) {
           : `<span class="detail-due-hint">Если указать дату, дело появится в календаре у ${person === "sasha" ? "Саши" : "Маши"}</span>`}
       </div>
       ${view}
+      <div class="detail-actions">
+        <button type="button" class="detail-save" data-save-card>
+          <span class="detail-save-mark">${CHECK}</span>
+          <span data-save-label>Сохранить</span>
+        </button>
+        ${showEditor && blocks.length ? `<button type="button" class="detail-btn" data-cancel-edit>Отмена</button>` : ""}
+        ${!showEditor && blocks.length ? `<button type="button" class="detail-btn" data-edit>Изменить пояснение</button>` : ""}
+        ${blocks.length || (showEditor && d.details.trim()) ? `<button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>` : ""}
+      </div>
     </div>
   `;
 }
 
 function renderBoard(person) {
+  captureOpenCards();
   const root = document.querySelector(`.board[data-person="${person}"]`);
   const items = state[person].filter((t) => !t.deleted).map(normalizeTask);
   const open = items.filter((t) => !t.done).length;
@@ -260,7 +264,10 @@ function renderBoard(person) {
       <button type="button" class="check" aria-label="${t.done ? "Вернуть в открытые" : "Отметить сделанным"}">${CHECK}</button>
       <div class="task-main">
         ${renaming
-          ? `<input class="task-title-input" data-title-input maxlength="180" value="${escapeHtml(titleValue)}" aria-label="Текст дела" />`
+          ? `<div class="task-rename">
+              <input class="task-title-input" data-title-input maxlength="180" value="${escapeHtml(titleValue)}" aria-label="Текст дела" />
+              <button type="button" class="task-rename-save" data-rename-save aria-label="Сохранить название">${CHECK}</button>
+            </div>`
           : `<button type="button" class="task-text" data-title title="Нажмите, чтобы изменить">${escapeHtml(t.text)}</button>`}
         ${due ? `<span class="task-due ${due.cls}" title="${escapeHtml(due.title)}">${escapeHtml(due.label)}</span>` : ""}
       </div>
@@ -312,7 +319,7 @@ function deleteTask(person, id) {
   item.deleted = true;
   touch(item);
   ui.open.delete(taskKey(person, id));
-  ui.draft.delete(taskKey(person, id));
+  ui.drafts.delete(taskKey(person, id));
   ui.renameDraft.delete(taskKey(person, id));
   if (ui.editing === taskKey(person, id)) ui.editing = null;
   if (ui.rename === taskKey(person, id)) ui.rename = null;
@@ -329,39 +336,73 @@ function clearBoard(person) {
   [...ui.open].forEach((key) => {
     if (key.startsWith(person + ":")) ui.open.delete(key);
   });
+  [...ui.drafts.keys()].forEach((key) => {
+    if (key.startsWith(person + ":")) ui.drafts.delete(key);
+  });
   save(state);
   renderBoard(person);
 }
 
-function readDraft(person, id) {
+function ensureDraft(person, id) {
   const key = taskKey(person, id);
-  const root = document.querySelector(`.board[data-person="${person}"]`);
-  const ta = root?.querySelector(`.task[data-id="${CSS.escape(id)}"] [data-details-input]`);
-  if (ta) return ta.value;
-  return ui.draft.has(key) ? ui.draft.get(key) : null;
+  if (!ui.drafts.has(key)) {
+    const item = findTask(person, id);
+    ui.drafts.set(key, {
+      title: item?.text || "",
+      due: item?.due || "",
+      details: serializeDetails(item?.details || []),
+    });
+  }
+  return ui.drafts.get(key);
 }
 
-function commitDetails(person, id) {
+function taskRoot(person, id) {
+  return document.querySelector(`.board[data-person="${person}"] .task[data-id="${CSS.escape(id)}"]`);
+}
+
+function captureCard(person, id) {
+  const d = ensureDraft(person, id);
+  const root = taskRoot(person, id);
+  if (!root) return d;
+  const title = root.querySelector("[data-title-field]");
+  const due = root.querySelector("[data-due]");
+  const ta = root.querySelector("[data-details-input]");
+  if (title) d.title = title.value;
+  if (due) d.due = due.value;
+  if (ta) d.details = ta.value;
+  return d;
+}
+
+function captureOpenCards() {
+  ui.open.forEach((key) => {
+    const person = key.startsWith("sasha:") ? "sasha" : key.startsWith("masha:") ? "masha" : "";
+    if (!person) return;
+    captureCard(person, key.slice(person.length + 1));
+  });
+}
+
+function commitCard(person, id) {
   const item = findTask(person, id);
   if (!item) return;
-  const raw = readDraft(person, id);
-  if (raw == null) return;
-  item.details = adoptDone(item.details, parseDetails(raw));
+  const key = taskKey(person, id);
+  const d = captureCard(person, id);
+  const title = String(d.title || "").replace(/\s+/g, " ").trim();
+  if (!title) {
+    const field = taskRoot(person, id)?.querySelector("[data-title-field]");
+    if (field) field.value = item.text;
+    d.title = item.text;
+    return;
+  }
+  item.text = title;
+  item.due = validDue(d.due);
+  if (ui.editing === key || taskRoot(person, id)?.querySelector("[data-details-input]")) {
+    item.details = adoptDone(item.details, parseDetails(d.details));
+  }
   touch(item);
-  ui.draft.delete(taskKey(person, id));
-  if (ui.editing === taskKey(person, id)) ui.editing = null;
+  ui.drafts.delete(key);
+  ui.editing = null;
   save(state);
-}
-
-function renameTask(person, id, text) {
-  const item = findTask(person, id);
-  if (!item) return false;
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
-  if (!clean || clean === item.text) return false;
-  item.text = clean;
-  touch(item);
-  save(state);
-  return true;
+  renderBoard(person);
 }
 
 function startRename(person, id) {
@@ -387,9 +428,15 @@ function commitRename(person, id) {
   const root = document.querySelector(`.board[data-person="${person}"]`);
   const input = root?.querySelector(`.task[data-id="${CSS.escape(id)}"] [data-title-input]`);
   const raw = input ? input.value : ui.renameDraft.get(key);
+  const item = findTask(person, id);
+  const clean = String(raw || "").replace(/\s+/g, " ").trim();
   ui.rename = null;
   ui.renameDraft.delete(key);
-  renameTask(person, id, raw);
+  if (item && clean && clean !== item.text) {
+    item.text = clean;
+    touch(item);
+    save(state);
+  }
   renderBoard(person);
 }
 
@@ -400,39 +447,30 @@ function cancelRename(person, id) {
   renderBoard(person);
 }
 
-function setDue(person, id, due) {
-  const item = findTask(person, id);
-  if (!item) return;
-  const next = validDue(due);
-  if (item.due === next) return;
-  item.due = next;
-  touch(item);
-  save(state);
-  renderBoard(person);
-}
-
 function wipeDetails(person, id) {
-  const item = findTask(person, id);
-  if (!item) return;
-  item.details = [];
-  touch(item);
-  ui.draft.delete(taskKey(person, id));
+  const d = ensureDraft(person, id);
+  d.details = "";
   ui.editing = taskKey(person, id);
-  save(state);
   renderBoard(person);
+  focusDetails(person, id);
 }
 
 function toggleInfo(person, id) {
   const key = taskKey(person, id);
   if (ui.open.has(key)) {
-    if (ui.editing === key || readDraft(person, id) != null) commitDetails(person, id);
+    captureCard(person, id);
     ui.open.delete(key);
     ui.editing = null;
     renderBoard(person);
+    if (!isBusy() && ui.pendingReload) {
+      ui.pendingReload = false;
+      applyCloudState();
+    }
     return;
   }
   ui.open.add(key);
   const item = findTask(person, id);
+  ensureDraft(person, id);
   if (item && !(item.details && item.details.length)) ui.editing = key;
   renderBoard(person);
   focusDetails(person, id);
@@ -448,15 +486,19 @@ function focusDetails(person, id) {
   ta.closest(".task")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
-function toggleBullet(person, id, bulletId) {
+function toggleBullet(person, id, bulletId, row) {
   const item = findTask(person, id);
   if (!item || !Array.isArray(item.details)) return;
   const block = item.details.find((b) => b.type === "li" && String(b.id) === String(bulletId));
   if (!block) return;
   block.done = !block.done;
   touch(item);
+  if (row) {
+    row.classList.toggle("done", block.done);
+    const btn = row.querySelector("[data-bullet]");
+    if (btn) btn.setAttribute("aria-label", block.done ? "Вернуть пункт" : "Отметить пункт сделанным");
+  }
   save(state);
-  renderBoard(person);
 }
 
 function applyDashConvert(ta) {
@@ -509,6 +551,10 @@ document.querySelectorAll(".board").forEach((board) => {
       toggleInfo(person, id);
       return;
     }
+    if (e.target.closest("[data-rename-save]")) {
+      commitRename(person, id);
+      return;
+    }
     if (e.target.closest("[data-title]")) {
       if (ui.open.has(taskKey(person, id))) {
         const field = task.querySelector("[data-title-field]");
@@ -526,29 +572,33 @@ document.querySelectorAll(".board").forEach((board) => {
     }
     const bullet = e.target.closest("[data-bullet]");
     if (bullet) {
-      toggleBullet(person, id, bullet.dataset.bullet);
+      toggleBullet(person, id, bullet.dataset.bullet, bullet.closest(".detail-li"));
       return;
     }
     if (e.target.closest("[data-edit]")) {
+      captureCard(person, id);
       ui.editing = taskKey(person, id);
-      ui.draft.set(taskKey(person, id), serializeDetails(findTask(person, id)?.details || []));
       renderBoard(person);
       focusDetails(person, id);
       return;
     }
-    if (e.target.closest("[data-save-details]")) {
-      commitDetails(person, id);
-      renderBoard(person);
+    if (e.target.closest("[data-save-card]")) {
+      commitCard(person, id);
       return;
     }
     if (e.target.closest("[data-cancel-edit]")) {
+      const item = findTask(person, id);
+      const d = ensureDraft(person, id);
+      d.details = serializeDetails(item?.details || []);
       ui.editing = null;
-      ui.draft.delete(taskKey(person, id));
       renderBoard(person);
       return;
     }
     if (e.target.closest("[data-clear-due]")) {
-      setDue(person, id, "");
+      const d = ensureDraft(person, id);
+      d.due = "";
+      const input = task.querySelector("[data-due]");
+      if (input) input.value = "";
       return;
     }
     const wipe = e.target.closest("[data-wipe]");
@@ -567,25 +617,30 @@ document.querySelectorAll(".board").forEach((board) => {
   });
 
   list.addEventListener("input", (e) => {
-    const title = e.target.closest("[data-title-input]");
-    if (title) {
-      const taskEl = title.closest(".task");
-      if (taskEl) ui.renameDraft.set(taskKey(person, taskEl.dataset.id), title.value);
+    const taskEl = e.target.closest(".task");
+    if (!taskEl) return;
+    const id = taskEl.dataset.id;
+    const d = ensureDraft(person, id);
+    const titleInline = e.target.closest("[data-title-input]");
+    if (titleInline) {
+      ui.renameDraft.set(taskKey(person, id), titleInline.value);
+      return;
+    }
+    const titleField = e.target.closest("[data-title-field]");
+    if (titleField) {
+      d.title = titleField.value;
+      return;
+    }
+    const due = e.target.closest("[data-due]");
+    if (due) {
+      d.due = due.value;
       return;
     }
     const ta = e.target.closest("[data-details-input]");
     if (!ta) return;
     applyDashConvert(ta);
-    const task = ta.closest(".task");
-    if (task) ui.draft.set(taskKey(person, task.dataset.id), ta.value);
+    d.details = ta.value;
     fitDetailsEditor(ta);
-  });
-
-  list.addEventListener("focusout", (e) => {
-    const input = e.target.closest("[data-title-input]");
-    if (!input) return;
-    const taskEl = input.closest(".task");
-    if (taskEl) commitRename(person, taskEl.dataset.id);
   });
 
   list.addEventListener("keydown", (e) => {
@@ -596,19 +651,16 @@ document.querySelectorAll(".board").forEach((board) => {
       if (e.key === "Enter") {
         e.preventDefault();
         if (title.hasAttribute("data-title-input")) commitRename(person, taskEl.dataset.id);
-        else {
-          if (renameTask(person, taskEl.dataset.id, title.value)) renderBoard(person);
-          else title.value = findTask(person, taskEl.dataset.id)?.text || title.value;
-          title.blur();
-        }
+        else commitCard(person, taskEl.dataset.id);
         return;
       }
       if (e.key === "Escape") {
         e.preventDefault();
         if (title.hasAttribute("data-title-input")) cancelRename(person, taskEl.dataset.id);
         else {
-          title.value = findTask(person, taskEl.dataset.id)?.text || title.value;
-          title.blur();
+          const item = findTask(person, taskEl.dataset.id);
+          title.value = item?.text || title.value;
+          ensureDraft(person, taskEl.dataset.id).title = title.value;
         }
       }
       return;
@@ -633,23 +685,15 @@ document.querySelectorAll(".board").forEach((board) => {
       try { ta.setSelectionRange(n, n); } catch {}
     }
     const task = ta.closest(".task");
-    if (task) ui.draft.set(taskKey(person, task.dataset.id), ta.value);
+    if (task) ensureDraft(person, task.dataset.id).details = ta.value;
     fitDetailsEditor(ta);
   });
 
   list.addEventListener("change", (e) => {
     const due = e.target.closest("[data-due]");
-    if (due) {
-      const taskEl = due.closest(".task");
-      if (taskEl) setDue(person, taskEl.dataset.id, due.value);
-      return;
-    }
-    const title = e.target.closest("[data-title-field]");
-    if (!title) return;
-    const taskEl = title.closest(".task");
-    if (!taskEl) return;
-    if (renameTask(person, taskEl.dataset.id, title.value)) renderBoard(person);
-    else title.value = findTask(person, taskEl.dataset.id)?.text || title.value;
+    if (!due) return;
+    const taskEl = due.closest(".task");
+    if (taskEl) ensureDraft(person, taskEl.dataset.id).due = due.value;
   });
 
   const clearBtn = $("[data-clear]", board);
@@ -772,13 +816,22 @@ function renderSync() {
   el.dataset.ok = st.ok ? "1" : "0";
 }
 
-window.sashaNotesReload = function () {
+function applyCloudState() {
   const fresh = load();
   state.sasha = fresh.sasha;
   state.masha = fresh.masha;
   renderBoard("sasha");
   renderBoard("masha");
   renderSync();
+}
+
+window.sashaNotesReload = function () {
+  renderSync();
+  if (isBusy()) {
+    ui.pendingReload = true;
+    return;
+  }
+  applyCloudState();
 };
 
 if (window.SashaCloud && typeof window.SashaCloud.subscribe === "function") {

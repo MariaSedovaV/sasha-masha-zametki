@@ -625,7 +625,71 @@ button, input { font-family: inherit; }
 .detail-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+.detail-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: var(--gold);
+  color: var(--on-accent);
+  border-radius: 999px;
+  padding: 6px 14px 6px 6px;
+  font: 700 12px Montserrat, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.detail-save-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--on-accent);
+  color: var(--gold);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.detail-save-mark svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.detail-save:hover { filter: brightness(1.06); }
+.task-rename {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 6px;
+  width: 100%;
+  align-items: center;
+}
+.task-rename-save {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--on-accent);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.task-rename-save svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .detail-btn {
   border: 1px solid var(--line);
@@ -687,7 +751,8 @@ button, input { font-family: inherit; }
   .clear-btn { min-height: 36px; }
   .check { width: 24px; height: 24px; }
   .task { padding: 8px 6px; grid-template-columns: 28px minmax(0, 1fr) 32px 32px; }
-  .task-info, .task-del { width: 32px; height: 32px; }
+  .task-info, .task-del, .task-rename-save { width: 32px; height: 32px; }
+  .detail-save { min-height: 44px; }
   .detail-due input[type="date"] { min-height: 40px; font-size: 16px; }
   .detail-editor textarea,
   .detail-editor input[type="text"],
