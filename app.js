@@ -337,23 +337,31 @@ function renderBlocks(blocks, interactive) {
   }).join("")}</div>`;
 }
 
+function hasVisibleDetails(blocks) {
+  return (blocks || []).some((b) => {
+    if (b.type === "li") return Boolean(String(b.text || "").trim());
+    if (b.type === "p") return Boolean(String(b.text || "").trim());
+    return false;
+  });
+}
+
 function renderExtra(person, t, editing) {
   const d = ensureDraft(person, t.id);
   const blocks = Array.isArray(t.details) ? t.details : [];
+  const visible = hasVisibleDetails(blocks);
   const saved = serializeDetails(blocks);
-  const showEditor = editing || !blocks.length;
+  const showEditor = editing || !visible;
   const dirty = String(d.details || "") !== saved;
-  const showActions = showEditor && (dirty || (editing && blocks.length));
+  const showActions = showEditor && (dirty || (editing && visible));
   const view = showEditor
     ? `
       <label class="detail-editor detail-compose">
         <span>Пояснение</span>
-        <textarea data-details-input rows="10" maxlength="4000" placeholder="Зачем это дело и что не забыть. Новая строка с тире станет пунктом:&#10;— позвонить в кассу&#10;— взять паспорт">${escapeHtml(d.details)}</textarea>
-        <small class="detail-hint">Тире в начале строки станет пунктом. Пустая строка по Enter сохранится. Кружки «сделано» пишутся сразу.</small>
+        <textarea data-details-input rows="2" maxlength="4000" placeholder="Зачем это дело и что не забыть…">${escapeHtml(d.details)}</textarea>
+        <small class="detail-hint">Тире в начале строки станет пунктом. Пустая строка сохранится.</small>
       </label>`
     : `<div class="detail-view" data-edit-text title="Нажмите на текст, чтобы изменить">
         ${renderBlocks(blocks, true)}
-        <small class="detail-hint">Нажмите на текст, чтобы изменить. Кружки отмечают пункт сразу.</small>
       </div>`;
 
   return `
@@ -364,7 +372,7 @@ function renderExtra(person, t, editing) {
           <span data-save-label>Сохранить</span>
         </button>
         <button type="button" class="detail-btn" data-cancel-edit>Отмена</button>
-        ${blocks.length || String(d.details || "").trim() ? `<button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>` : ""}
+        ${visible || String(d.details || "").trim() ? `<button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>` : ""}
       </div>
       ${view}
     </div>
@@ -725,7 +733,9 @@ function toggleInfo(person, id) {
   ensureDraft(person, id);
   ui.editing = null;
   ui.dirty.delete(key);
+  const item = findTask(person, id);
   renderBoard(person);
+  if (!hasVisibleDetails(item?.details || [])) focusDetails(person, id);
 }
 
 function focusDetails(person, id) {
@@ -767,8 +777,8 @@ function applyDashConvert(ta) {
 function fitDetailsEditor(ta) {
   if (!ta) return;
   ta.style.height = "auto";
-  const min = 220;
-  const max = Math.max(min, Math.round(window.innerHeight * 0.58));
+  const min = 56;
+  const max = Math.max(min, Math.round(window.innerHeight * 0.45));
   ta.style.height = Math.max(min, Math.min(max, ta.scrollHeight + 2)) + "px";
 }
 

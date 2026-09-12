@@ -790,10 +790,10 @@ body.on-archive .clear-btn { display: none; }
   font-weight: 500;
 }
 .detail-editor textarea {
-  min-height: 220px;
-  max-height: min(58vh, 560px);
-  padding: 14px 16px;
-  font: 500 15px/1.55 Montserrat, sans-serif;
+  min-height: 56px;
+  max-height: min(45vh, 420px);
+  padding: 10px 12px;
+  font: 500 15px/1.5 Montserrat, sans-serif;
   resize: none;
   overflow-y: auto;
 }
@@ -811,12 +811,11 @@ body.on-archive .clear-btn { display: none; }
 }
 .detail-view {
   display: grid;
-  gap: 10px;
-  min-height: 120px;
+  gap: 8px;
   border: 1px solid var(--line);
   background: var(--bg);
   border-radius: 16px;
-  padding: 14px 16px;
+  padding: 10px 12px;
   cursor: text;
 }
 .detail-view .detail-check,
@@ -1050,7 +1049,7 @@ body.on-archive .clear-btn { display: none; }
   .detail-editor textarea,
   .detail-editor input[type="text"],
   .task-title-input { font-size: 16px; }
-  .detail-editor textarea { min-height: 260px; max-height: min(62vh, 640px); }
+  .detail-editor textarea { min-height: 64px; max-height: min(50vh, 480px); }
   .home-link { width: 40px; height: 40px; }
   .theme-toggle { min-height: 40px; padding: 8px 12px; font-size: 12px; }
   .sync-status { display: none; }
