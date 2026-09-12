@@ -419,11 +419,11 @@ function renderBoard(person) {
         ${renaming
           ? `<div class="task-rename">
               <input class="task-title-input" data-title-input maxlength="180" value="${escapeHtml(draft.text)}" aria-label="Текст дела" />
+              <button type="button" class="task-rename-save" data-rename-save aria-label="Сохранить название и срок">${CHECK}</button>
               <label class="task-rename-due">
                 <span>Срок</span>
                 <input type="date" data-rename-due value="${escapeHtml(draft.due)}" />
               </label>
-              <button type="button" class="task-rename-save" data-rename-save aria-label="Сохранить название и срок">${CHECK}</button>
             </div>`
           : `<button type="button" class="task-hit ${hasExtra ? "has-extra" : ""}" data-expand aria-expanded="${opened ? "true" : "false"}" title="Нажмите, чтобы открыть пояснение и срок">
               <span class="task-hit-top">
