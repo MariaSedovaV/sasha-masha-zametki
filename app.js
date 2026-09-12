@@ -767,7 +767,8 @@ function renderChrome() {
   document.querySelectorAll("[data-nav]").forEach((el) => {
     const on = el.dataset.nav === ui.view;
     el.classList.toggle("is-on", on);
-    el.setAttribute("aria-current", on ? "page" : "false");
+    if (on) el.setAttribute("aria-current", "page");
+    else el.removeAttribute("aria-current");
   });
   const bar = document.querySelector("[data-archive-bar]");
   if (bar) bar.hidden = ui.view !== "archive";
