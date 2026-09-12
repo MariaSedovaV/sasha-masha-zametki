@@ -575,6 +575,7 @@ button, input { font-family: inherit; }
   grid-template-columns: 18px 1fr;
   gap: 8px;
   align-items: flex-start;
+  cursor: pointer;
 }
 .detail-check {
   width: 18px;
@@ -629,9 +630,6 @@ button, input { font-family: inherit; }
   gap: 8px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--line);
-}
-.detail-li {
-  cursor: pointer;
 }
 .detail-save {
   display: inline-flex;
