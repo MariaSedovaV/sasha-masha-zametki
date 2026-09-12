@@ -204,12 +204,21 @@ function renderExtra(person, t, editing) {
       <label class="detail-editor detail-compose">
         <span>Пояснение</span>
         <textarea data-details-input rows="10" maxlength="4000" placeholder="Зачем это дело и что не забыть. Новая строка с тире станет пунктом:&#10;— позвонить в кассу&#10;— взять паспорт">${escapeHtml(d.details)}</textarea>
-        <small class="detail-hint">Тире в начале строки станет пунктом. Галочка сохранит дело, срок и пояснение.</small>
+        <small class="detail-hint">Тире в начале строки станет пунктом. Кружки «сделано» сохраняются сразу, остальное — кнопкой наверху.</small>
       </label>`
     : `<div class="detail-view">${renderBlocks(blocks, true)}</div>`;
 
   return `
     <div class="task-extra">
+      <div class="detail-actions">
+        <button type="button" class="detail-save" data-save-card>
+          <span class="detail-save-mark">${CHECK}</span>
+          <span data-save-label>Сохранить</span>
+        </button>
+        ${!showEditor && blocks.length ? `<button type="button" class="detail-btn" data-edit>Изменить пояснение</button>` : ""}
+        ${showEditor && blocks.length ? `<button type="button" class="detail-btn" data-cancel-edit>Отмена</button>` : ""}
+        ${blocks.length || (showEditor && d.details.trim()) ? `<button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>` : ""}
+      </div>
       <label class="detail-editor">
         <span>Дело</span>
         <input type="text" data-title-field maxlength="180" value="${escapeHtml(d.title)}" aria-label="Текст дела" />
@@ -224,15 +233,6 @@ function renderExtra(person, t, editing) {
           : `<span class="detail-due-hint">Если указать дату, дело появится в календаре у ${person === "sasha" ? "Саши" : "Маши"}</span>`}
       </div>
       ${view}
-      <div class="detail-actions">
-        <button type="button" class="detail-save" data-save-card>
-          <span class="detail-save-mark">${CHECK}</span>
-          <span data-save-label>Сохранить</span>
-        </button>
-        ${showEditor && blocks.length ? `<button type="button" class="detail-btn" data-cancel-edit>Отмена</button>` : ""}
-        ${!showEditor && blocks.length ? `<button type="button" class="detail-btn" data-edit>Изменить пояснение</button>` : ""}
-        ${blocks.length || (showEditor && d.details.trim()) ? `<button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>` : ""}
-      </div>
     </div>
   `;
 }
@@ -493,6 +493,8 @@ function toggleBullet(person, id, bulletId, row) {
   if (!block) return;
   block.done = !block.done;
   touch(item);
+  const d = ui.drafts.get(taskKey(person, id));
+  if (d) d.details = serializeDetails(item.details);
   if (row) {
     row.classList.toggle("done", block.done);
     const btn = row.querySelector("[data-bullet]");
@@ -570,9 +572,10 @@ document.querySelectorAll(".board").forEach((board) => {
       toggleTask(person, id);
       return;
     }
-    const bullet = e.target.closest("[data-bullet]");
-    if (bullet) {
-      toggleBullet(person, id, bullet.dataset.bullet, bullet.closest(".detail-li"));
+    const bulletRow = e.target.closest(".detail-view .detail-li");
+    if (bulletRow) {
+      const btn = bulletRow.querySelector("[data-bullet]");
+      if (btn) toggleBullet(person, id, btn.dataset.bullet, bulletRow);
       return;
     }
     if (e.target.closest("[data-edit]")) {
