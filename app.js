@@ -15,6 +15,7 @@ const ui = {
   pendingReload: false,
   view: "active",
   search: "",
+  dirty: new Set(),
 };
 
 function isBusy() {
@@ -339,7 +340,10 @@ function renderBlocks(blocks, interactive) {
 function renderExtra(person, t, editing) {
   const d = ensureDraft(person, t.id);
   const blocks = Array.isArray(t.details) ? t.details : [];
+  const saved = serializeDetails(blocks);
   const showEditor = editing || !blocks.length;
+  const dirty = String(d.details || "") !== saved;
+  const showActions = showEditor && (dirty || (editing && blocks.length));
   const view = showEditor
     ? `
       <label class="detail-editor detail-compose">
@@ -347,18 +351,20 @@ function renderExtra(person, t, editing) {
         <textarea data-details-input rows="10" maxlength="4000" placeholder="Зачем это дело и что не забыть. Новая строка с тире станет пунктом:&#10;— позвонить в кассу&#10;— взять паспорт">${escapeHtml(d.details)}</textarea>
         <small class="detail-hint">Тире в начале строки станет пунктом. Пустая строка по Enter сохранится. Кружки «сделано» пишутся сразу.</small>
       </label>`
-    : `<div class="detail-view">${renderBlocks(blocks, true)}</div>`;
+    : `<div class="detail-view" data-edit-text title="Нажмите на текст, чтобы изменить">
+        ${renderBlocks(blocks, true)}
+        <small class="detail-hint">Нажмите на текст, чтобы изменить. Кружки отмечают пункт сразу.</small>
+      </div>`;
 
   return `
     <div class="task-extra">
-      <div class="detail-actions">
+      <div class="detail-actions${showActions ? "" : " is-idle"}">
         <button type="button" class="detail-save" data-save-card>
           <span class="detail-save-mark">${CHECK}</span>
           <span data-save-label>Сохранить</span>
         </button>
-        ${!showEditor && blocks.length ? `<button type="button" class="detail-btn" data-edit>Изменить пояснение</button>` : ""}
-        ${showEditor && blocks.length ? `<button type="button" class="detail-btn" data-cancel-edit>Отмена</button>` : ""}
-        ${blocks.length || (showEditor && d.details.trim()) ? `<button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>` : ""}
+        <button type="button" class="detail-btn" data-cancel-edit>Отмена</button>
+        ${blocks.length || String(d.details || "").trim() ? `<button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>` : ""}
       </div>
       ${view}
     </div>
@@ -415,7 +421,7 @@ function renderBoard(person) {
                 <input type="date" data-rename-due value="${escapeHtml(draft.due)}" />
               </label>
             </div>`
-          : `<button type="button" class="task-hit ${hasExtra ? "has-extra" : ""}" data-expand aria-expanded="${opened ? "true" : "false"}" title="Нажмите, чтобы открыть пояснение и срок">
+          : `<button type="button" class="task-hit ${hasExtra ? "has-extra" : ""}" data-expand aria-expanded="${opened ? "true" : "false"}" title="Нажмите, чтобы открыть пояснение">
               <span class="task-hit-top">
                 <span class="task-text">${escapeHtml(t.text)}</span>
                 ${CHEVRON}
@@ -490,6 +496,7 @@ function deleteTask(person, id) {
   ui.open.delete(taskKey(person, id));
   ui.drafts.delete(taskKey(person, id));
   ui.renameDraft.delete(taskKey(person, id));
+  ui.dirty.delete(taskKey(person, id));
   if (ui.editing === taskKey(person, id)) ui.editing = null;
   if (ui.rename === taskKey(person, id)) ui.rename = null;
   save(state);
@@ -509,6 +516,9 @@ function clearBoard(person) {
   [...ui.drafts.keys()].forEach((key) => {
     if (key.startsWith(person + ":")) ui.drafts.delete(key);
   });
+  [...ui.dirty].forEach((key) => {
+    if (key.startsWith(person + ":")) ui.dirty.delete(key);
+  });
   save(state);
   renderBoard(person);
 }
@@ -523,6 +533,7 @@ function restoreTask(person, id, due) {
   item.doneAt = 0;
   ui.open.delete(taskKey(person, id));
   ui.drafts.delete(taskKey(person, id));
+  ui.dirty.delete(taskKey(person, id));
   if (ui.rename === taskKey(person, id)) {
     ui.rename = null;
     ui.renameDraft.delete(taskKey(person, id));
@@ -580,6 +591,7 @@ function commitCard(person, id) {
   }
   touch(item);
   ui.drafts.delete(key);
+  ui.dirty.delete(key);
   ui.editing = null;
   save(state);
   renderBoard(person);
@@ -652,10 +664,45 @@ function cancelRename(person, id) {
   renderBoard(person);
 }
 
+function startEditDetails(person, id) {
+  const key = taskKey(person, id);
+  captureCard(person, id);
+  ui.editing = key;
+  renderBoard(person);
+  focusDetails(person, id);
+}
+
+function cancelEditDetails(person, id) {
+  if (!id) return;
+  const item = findTask(person, id);
+  const d = ensureDraft(person, id);
+  d.details = serializeDetails(item?.details || []);
+  ui.editing = null;
+  ui.dirty.delete(taskKey(person, id));
+  renderBoard(person);
+}
+
+function syncDetailChrome(taskEl, person, id) {
+  const key = taskKey(person, id);
+  const item = findTask(person, id);
+  const ta = taskEl?.querySelector("[data-details-input]");
+  const saved = serializeDetails(item?.details || []);
+  const value = ta ? ta.value : (ui.drafts.get(key)?.details || "");
+  const dirty = value !== saved;
+  if (dirty) ui.dirty.add(key);
+  else ui.dirty.delete(key);
+  const actions = taskEl?.querySelector(".detail-actions");
+  if (!actions) return;
+  const hasSaved = !!(item?.details && item.details.length);
+  const show = dirty || (ui.editing === key && hasSaved);
+  actions.classList.toggle("is-idle", !show);
+}
+
 function wipeDetails(person, id) {
   const d = ensureDraft(person, id);
   d.details = "";
   ui.editing = taskKey(person, id);
+  ui.dirty.add(taskKey(person, id));
   renderBoard(person);
   focusDetails(person, id);
 }
@@ -666,6 +713,7 @@ function toggleInfo(person, id) {
     captureCard(person, id);
     ui.open.delete(key);
     ui.editing = null;
+    ui.dirty.delete(key);
     renderBoard(person);
     if (!isBusy() && ui.pendingReload) {
       ui.pendingReload = false;
@@ -674,11 +722,10 @@ function toggleInfo(person, id) {
     return;
   }
   ui.open.add(key);
-  const item = findTask(person, id);
   ensureDraft(person, id);
-  if (item && !(item.details && item.details.length)) ui.editing = key;
+  ui.editing = null;
+  ui.dirty.delete(key);
   renderBoard(person);
-  focusDetails(person, id);
 }
 
 function focusDetails(person, id) {
@@ -838,17 +885,15 @@ document.querySelectorAll(".board").forEach((board) => {
       toggleTask(person, id);
       return;
     }
-    const bulletRow = e.target.closest(".detail-view .detail-li");
-    if (bulletRow) {
-      const btn = bulletRow.querySelector("[data-bullet]");
-      if (btn) toggleBullet(person, id, btn.dataset.bullet, bulletRow);
+    const checkHit = e.target.closest(".detail-view .detail-check, .detail-view [data-bullet]");
+    if (checkHit) {
+      const row = checkHit.closest(".detail-li");
+      const btn = row?.querySelector("[data-bullet]");
+      if (btn) toggleBullet(person, id, btn.dataset.bullet, row);
       return;
     }
-    if (e.target.closest("[data-edit]")) {
-      captureCard(person, id);
-      ui.editing = taskKey(person, id);
-      renderBoard(person);
-      focusDetails(person, id);
+    if (e.target.closest("[data-edit-text]")) {
+      startEditDetails(person, id);
       return;
     }
     if (e.target.closest("[data-save-card]")) {
@@ -856,11 +901,7 @@ document.querySelectorAll(".board").forEach((board) => {
       return;
     }
     if (e.target.closest("[data-cancel-edit]")) {
-      const item = findTask(person, id);
-      const d = ensureDraft(person, id);
-      d.details = serializeDetails(item?.details || []);
-      ui.editing = null;
-      renderBoard(person);
+      cancelEditDetails(person, id);
       return;
     }
     const wipe = e.target.closest("[data-wipe]");
@@ -899,7 +940,9 @@ document.querySelectorAll(".board").forEach((board) => {
     if (!ta) return;
     applyDashConvert(ta);
     d.details = ta.value;
+    ui.editing = taskKey(person, id);
     fitDetailsEditor(ta);
+    syncDetailChrome(taskEl, person, id);
   });
 
   list.addEventListener("keydown", (e) => {
@@ -919,6 +962,11 @@ document.querySelectorAll(".board").forEach((board) => {
       return;
     }
     const ta = e.target.closest("[data-details-input]");
+    if (ta && e.key === "Escape") {
+      e.preventDefault();
+      cancelEditDetails(person, ta.closest(".task")?.dataset.id);
+      return;
+    }
     if (!ta || e.key !== "Enter" || e.shiftKey) return;
     const pos = ta.selectionStart;
     if (ta.selectionEnd !== pos) return;
@@ -940,6 +988,7 @@ document.querySelectorAll(".board").forEach((board) => {
     const task = ta.closest(".task");
     if (task) ensureDraft(person, task.dataset.id).details = ta.value;
     fitDetailsEditor(ta);
+    if (task) syncDetailChrome(task, person, task.dataset.id);
   });
 
   list.addEventListener("change", (e) => {
