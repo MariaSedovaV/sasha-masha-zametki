@@ -195,15 +195,13 @@ function renderExtra(person, t, editing) {
   const key = taskKey(person, t.id);
   const draft = ui.draft.has(key) ? ui.draft.get(key) : serializeDetails(blocks);
   const showEditor = editing || !blocks.length;
-  const previewBlocks = parseDetails(draft);
   const view = showEditor
     ? `
-      <label class="detail-editor">
+      <label class="detail-editor detail-compose">
         <span>Пояснение</span>
-        <textarea data-details-input rows="4" maxlength="2000" placeholder="Зачем это дело, что не забыть. Новая строка с тире станет пунктом:&#10;— позвонить в кассу&#10;— взять паспорт">${escapeHtml(draft)}</textarea>
+        <textarea data-details-input rows="10" maxlength="4000" placeholder="Зачем это дело и что не забыть. Новая строка с тире станет пунктом:&#10;— позвонить в кассу&#10;— взять паспорт">${escapeHtml(draft)}</textarea>
+        <small class="detail-hint">Тире в начале строки станет пунктом. Enter продолжит список, галочки появятся после сохранения.</small>
       </label>
-      <div class="detail-preview ${previewBlocks.length ? "" : "empty"}" data-preview>${previewBlocks.length ? renderBlocks(previewBlocks, false) : ""}</div>
-      <p class="detail-hint">Тире в начале строки само становится круглым пунктом. Потом любой пункт можно отметить сделанным — текст мягко перечеркнётся.</p>
       <div class="detail-actions">
         <button type="button" class="detail-btn primary" data-save-details>Сохранить</button>
         ${blocks.length ? `<button type="button" class="detail-btn" data-cancel-edit>Отмена</button>` : ""}
@@ -271,6 +269,7 @@ function renderBoard(person) {
       ${opened ? renderExtra(person, t, editing) : ""}
     </li>`;
   }).join("");
+  list.querySelectorAll("[data-details-input]").forEach(fitDetailsEditor);
 }
 
 function findTask(person, id) {
@@ -442,9 +441,11 @@ function toggleInfo(person, id) {
 function focusDetails(person, id) {
   const ta = document.querySelector(`.board[data-person="${person}"] .task[data-id="${id}"] [data-details-input]`);
   if (!ta) return;
+  fitDetailsEditor(ta);
   ta.focus();
   const len = ta.value.length;
   try { ta.setSelectionRange(len, len); } catch {}
+  ta.closest(".task")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
 function toggleBullet(person, id, bulletId) {
@@ -467,12 +468,12 @@ function applyDashConvert(ta) {
   try { ta.setSelectionRange(pos, pos); } catch {}
 }
 
-function refreshPreview(ta) {
-  const preview = ta.closest(".task-extra")?.querySelector("[data-preview]");
-  if (!preview) return;
-  const blocks = parseDetails(ta.value);
-  preview.classList.toggle("empty", !blocks.length);
-  preview.innerHTML = blocks.length ? renderBlocks(blocks, false) : "";
+function fitDetailsEditor(ta) {
+  if (!ta) return;
+  ta.style.height = "auto";
+  const min = 220;
+  const max = Math.max(min, Math.round(window.innerHeight * 0.58));
+  ta.style.height = Math.max(min, Math.min(max, ta.scrollHeight + 2)) + "px";
 }
 
 const state = load();
@@ -577,7 +578,7 @@ document.querySelectorAll(".board").forEach((board) => {
     applyDashConvert(ta);
     const task = ta.closest(".task");
     if (task) ui.draft.set(taskKey(person, task.dataset.id), ta.value);
-    refreshPreview(ta);
+    fitDetailsEditor(ta);
   });
 
   list.addEventListener("focusout", (e) => {
@@ -633,7 +634,7 @@ document.querySelectorAll(".board").forEach((board) => {
     }
     const task = ta.closest(".task");
     if (task) ui.draft.set(taskKey(person, task.dataset.id), ta.value);
-    refreshPreview(ta);
+    fitDetailsEditor(ta);
   });
 
   list.addEventListener("change", (e) => {

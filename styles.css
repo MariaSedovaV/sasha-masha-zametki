@@ -526,6 +526,7 @@ button, input { font-family: inherit; }
   line-height: 1.35;
 }
 .detail-editor { display: grid; gap: 6px; }
+.detail-compose { gap: 8px; }
 .detail-editor textarea,
 .detail-editor input[type="text"] {
   width: 100%;
@@ -536,14 +537,19 @@ button, input { font-family: inherit; }
   padding: 12px 14px;
   font: 500 14px/1.45 Montserrat, sans-serif;
   outline: none;
-  resize: vertical;
-  min-height: 96px;
 }
 .detail-editor input[type="text"] {
-  resize: none;
   min-height: 44px;
   font-size: 15px;
   font-weight: 500;
+}
+.detail-editor textarea {
+  min-height: 220px;
+  max-height: min(58vh, 560px);
+  padding: 14px 16px;
+  font: 500 15px/1.55 Montserrat, sans-serif;
+  resize: none;
+  overflow-y: auto;
 }
 .detail-editor textarea:focus,
 .detail-editor input[type="text"]:focus {
@@ -555,13 +561,7 @@ button, input { font-family: inherit; }
   font-size: 12px;
   line-height: 1.45;
   color: var(--muted);
-}
-.detail-preview.empty { display: none; }
-.detail-preview:not(.empty) {
-  padding: 8px 10px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--card) 55%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--gold) 28%, var(--line));
+  font-weight: 500;
 }
 .detail-blocks { display: grid; gap: 7px; }
 .detail-p {
@@ -692,6 +692,7 @@ button, input { font-family: inherit; }
   .detail-editor textarea,
   .detail-editor input[type="text"],
   .task-title-input { font-size: 16px; }
+  .detail-editor textarea { min-height: 260px; max-height: min(62vh, 640px); }
   .home-link { width: 40px; height: 40px; }
   .theme-toggle { min-height: 40px; padding: 8px 12px; font-size: 12px; }
   .sync-status { display: none; }
