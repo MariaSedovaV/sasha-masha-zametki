@@ -398,6 +398,34 @@ button, input { font-family: inherit; }
   line-height: 1.4;
   font-weight: 500;
   word-break: break-word;
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: text;
+  font-family: inherit;
+  border-radius: 8px;
+}
+@media (hover: hover) {
+  .task-text:hover { color: var(--gold-2); }
+}
+.task-title-input {
+  width: 100%;
+  border: 1px solid var(--gold);
+  background: var(--bg);
+  color: var(--ink);
+  font: 500 15px/1.4 Montserrat, sans-serif;
+  border-radius: 10px;
+  padding: 4px 8px;
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent);
+}
+.task.renaming .task-title-input {
+  text-decoration: none;
 }
 .task-del {
   width: 28px;
@@ -498,7 +526,8 @@ button, input { font-family: inherit; }
   line-height: 1.35;
 }
 .detail-editor { display: grid; gap: 6px; }
-.detail-editor textarea {
+.detail-editor textarea,
+.detail-editor input[type="text"] {
   width: 100%;
   border: 1px solid var(--line);
   background: var(--bg);
@@ -510,7 +539,14 @@ button, input { font-family: inherit; }
   resize: vertical;
   min-height: 96px;
 }
-.detail-editor textarea:focus {
+.detail-editor input[type="text"] {
+  resize: none;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.detail-editor textarea:focus,
+.detail-editor input[type="text"]:focus {
   border-color: var(--gold);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent);
 }
@@ -653,7 +689,9 @@ button, input { font-family: inherit; }
   .task { padding: 8px 6px; grid-template-columns: 28px minmax(0, 1fr) 32px 32px; }
   .task-info, .task-del { width: 32px; height: 32px; }
   .detail-due input[type="date"] { min-height: 40px; font-size: 16px; }
-  .detail-editor textarea { font-size: 16px; }
+  .detail-editor textarea,
+  .detail-editor input[type="text"],
+  .task-title-input { font-size: 16px; }
   .home-link { width: 40px; height: 40px; }
   .theme-toggle { min-height: 40px; padding: 8px 12px; font-size: 12px; }
   .sync-status { display: none; }

@@ -7,6 +7,8 @@ const ui = {
   open: new Set(),
   editing: null,
   draft: new Map(),
+  rename: null,
+  renameDraft: new Map(),
 };
 
 function $(sel, root = document) {
@@ -216,6 +218,10 @@ function renderExtra(person, t, editing) {
 
   return `
     <div class="task-extra">
+      <label class="detail-editor">
+        <span>Дело</span>
+        <input type="text" data-title-field maxlength="180" value="${escapeHtml(t.text)}" aria-label="Текст дела" />
+      </label>
       <div class="detail-due-row">
         <label class="detail-due">
           <span>Срок</span>
@@ -247,13 +253,17 @@ function renderBoard(person) {
     const key = taskKey(person, t.id);
     const opened = ui.open.has(key);
     const editing = ui.editing === key;
+    const renaming = ui.rename === key;
     const hasExtra = Boolean(t.due) || (t.details && t.details.length);
     const due = t.due ? formatDue(t.due) : null;
+    const titleValue = renaming ? (ui.renameDraft.get(key) ?? t.text) : t.text;
     return `
-    <li class="task ${t.done ? "done" : ""} ${opened ? "open" : ""}" data-id="${t.id}">
+    <li class="task ${t.done ? "done" : ""} ${opened ? "open" : ""} ${renaming ? "renaming" : ""}" data-id="${t.id}">
       <button type="button" class="check" aria-label="${t.done ? "Вернуть в открытые" : "Отметить сделанным"}">${CHECK}</button>
       <div class="task-main">
-        <span class="task-text">${escapeHtml(t.text)}</span>
+        ${renaming
+          ? `<input class="task-title-input" data-title-input maxlength="180" value="${escapeHtml(titleValue)}" aria-label="Текст дела" />`
+          : `<button type="button" class="task-text" data-title title="Нажмите, чтобы изменить">${escapeHtml(t.text)}</button>`}
         ${due ? `<span class="task-due ${due.cls}" title="${escapeHtml(due.title)}">${escapeHtml(due.label)}</span>` : ""}
       </div>
       <button type="button" class="task-info ${hasExtra ? "has-extra" : ""}" data-info aria-expanded="${opened ? "true" : "false"}" aria-label="Пояснение и срок"><span>i</span></button>
@@ -304,7 +314,9 @@ function deleteTask(person, id) {
   touch(item);
   ui.open.delete(taskKey(person, id));
   ui.draft.delete(taskKey(person, id));
+  ui.renameDraft.delete(taskKey(person, id));
   if (ui.editing === taskKey(person, id)) ui.editing = null;
+  if (ui.rename === taskKey(person, id)) ui.rename = null;
   save(state);
   renderBoard(person);
 }
@@ -340,6 +352,53 @@ function commitDetails(person, id) {
   ui.draft.delete(taskKey(person, id));
   if (ui.editing === taskKey(person, id)) ui.editing = null;
   save(state);
+}
+
+function renameTask(person, id, text) {
+  const item = findTask(person, id);
+  if (!item) return false;
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean || clean === item.text) return false;
+  item.text = clean;
+  touch(item);
+  save(state);
+  return true;
+}
+
+function startRename(person, id) {
+  const key = taskKey(person, id);
+  if (ui.rename && ui.rename !== key) {
+    const prev = ui.rename.split(":");
+    commitRename(prev[0], prev.slice(1).join(":"));
+  }
+  const item = findTask(person, id);
+  if (!item) return;
+  ui.rename = key;
+  if (!ui.renameDraft.has(key)) ui.renameDraft.set(key, item.text);
+  renderBoard(person);
+  const input = document.querySelector(`.board[data-person="${person}"] .task[data-id="${id}"] [data-title-input]`);
+  if (!input) return;
+  input.focus();
+  input.select();
+}
+
+function commitRename(person, id) {
+  const key = taskKey(person, id);
+  if (ui.rename !== key) return;
+  const root = document.querySelector(`.board[data-person="${person}"]`);
+  const input = root?.querySelector(`.task[data-id="${CSS.escape(id)}"] [data-title-input]`);
+  const raw = input ? input.value : ui.renameDraft.get(key);
+  ui.rename = null;
+  ui.renameDraft.delete(key);
+  renameTask(person, id, raw);
+  renderBoard(person);
+}
+
+function cancelRename(person, id) {
+  const key = taskKey(person, id);
+  ui.rename = null;
+  ui.renameDraft.delete(key);
+  renderBoard(person);
 }
 
 function setDue(person, id, due) {
@@ -445,10 +504,22 @@ document.querySelectorAll(".board").forEach((board) => {
       return;
     }
     if (e.target.closest("[data-info]")) {
+      if (ui.rename === taskKey(person, id)) commitRename(person, id);
       toggleInfo(person, id);
       return;
     }
+    if (e.target.closest("[data-title]")) {
+      if (ui.open.has(taskKey(person, id))) {
+        const field = task.querySelector("[data-title-field]");
+        field?.focus();
+        field?.select();
+        return;
+      }
+      startRename(person, id);
+      return;
+    }
     if (e.target.closest(".check") && !e.target.closest(".detail-check")) {
+      if (ui.rename === taskKey(person, id)) commitRename(person, id);
       toggleTask(person, id);
       return;
     }
@@ -495,6 +566,12 @@ document.querySelectorAll(".board").forEach((board) => {
   });
 
   list.addEventListener("input", (e) => {
+    const title = e.target.closest("[data-title-input]");
+    if (title) {
+      const taskEl = title.closest(".task");
+      if (taskEl) ui.renameDraft.set(taskKey(person, taskEl.dataset.id), title.value);
+      return;
+    }
     const ta = e.target.closest("[data-details-input]");
     if (!ta) return;
     applyDashConvert(ta);
@@ -503,7 +580,38 @@ document.querySelectorAll(".board").forEach((board) => {
     refreshPreview(ta);
   });
 
+  list.addEventListener("focusout", (e) => {
+    const input = e.target.closest("[data-title-input]");
+    if (!input) return;
+    const taskEl = input.closest(".task");
+    if (taskEl) commitRename(person, taskEl.dataset.id);
+  });
+
   list.addEventListener("keydown", (e) => {
+    const title = e.target.closest("[data-title-input], [data-title-field]");
+    if (title) {
+      const taskEl = title.closest(".task");
+      if (!taskEl) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (title.hasAttribute("data-title-input")) commitRename(person, taskEl.dataset.id);
+        else {
+          if (renameTask(person, taskEl.dataset.id, title.value)) renderBoard(person);
+          else title.value = findTask(person, taskEl.dataset.id)?.text || title.value;
+          title.blur();
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (title.hasAttribute("data-title-input")) cancelRename(person, taskEl.dataset.id);
+        else {
+          title.value = findTask(person, taskEl.dataset.id)?.text || title.value;
+          title.blur();
+        }
+      }
+      return;
+    }
     const ta = e.target.closest("[data-details-input]");
     if (!ta || e.key !== "Enter" || e.shiftKey) return;
     const pos = ta.selectionStart;
@@ -530,9 +638,17 @@ document.querySelectorAll(".board").forEach((board) => {
 
   list.addEventListener("change", (e) => {
     const due = e.target.closest("[data-due]");
-    if (!due) return;
-    const task = due.closest(".task");
-    if (task) setDue(person, task.dataset.id, due.value);
+    if (due) {
+      const taskEl = due.closest(".task");
+      if (taskEl) setDue(person, taskEl.dataset.id, due.value);
+      return;
+    }
+    const title = e.target.closest("[data-title-field]");
+    if (!title) return;
+    const taskEl = title.closest(".task");
+    if (!taskEl) return;
+    if (renameTask(person, taskEl.dataset.id, title.value)) renderBoard(person);
+    else title.value = findTask(person, taskEl.dataset.id)?.text || title.value;
   });
 
   const clearBtn = $("[data-clear]", board);
