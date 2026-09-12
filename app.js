@@ -68,38 +68,54 @@ function parseDetails(text) {
   const lines = convertDashLines(text).replace(/\r\n/g, "\n").split("\n");
   const blocks = [];
   let para = [];
-  const flush = () => {
-    const t = para.join("\n").trim();
-    if (t) blocks.push({ type: "p", text: t });
+  let blankRun = 0;
+  const flushPara = () => {
+    if (!para.length) return;
+    const cleaned = para.map((l) => l.replace(/[ \t]+$/, "")).join("\n");
+    if (cleaned.trim()) blocks.push({ type: "p", text: cleaned });
     para = [];
+  };
+  const flushBlanks = () => {
+    if (blankRun > 0) {
+      blocks.push({ type: "gap", count: Math.min(12, blankRun) });
+      blankRun = 0;
+    }
   };
   for (const line of lines) {
     const m = line.match(/^\s*•\s+(.*)$/) || line.match(BULLET_RE);
     if (m) {
-      flush();
+      flushPara();
+      flushBlanks();
       const item = String(m[1] || "").trim();
       if (item) blocks.push({ type: "li", id: uid(), text: item, done: false });
     } else if (!line.trim()) {
-      flush();
+      flushPara();
+      blankRun += 1;
     } else {
+      flushBlanks();
       para.push(line);
     }
   }
-  flush();
+  flushPara();
+  flushBlanks();
   return blocks;
 }
 
 function serializeDetails(blocks) {
   const lines = [];
   (blocks || []).forEach((b) => {
+    if (b.type === "gap") {
+      const n = Math.max(1, Math.min(12, Number(b.count) || 1));
+      for (let i = 0; i < n; i += 1) lines.push("");
+      return;
+    }
     if (b.type === "li") {
       lines.push("• " + b.text);
-    } else if (b.text) {
-      if (lines.length) lines.push("");
-      lines.push(b.text);
+      return;
     }
+    if (b.text) String(b.text).split("\n").forEach((line) => lines.push(line));
   });
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return lines.join("\n");
 }
 
 function adoptDone(prev, next) {
@@ -117,13 +133,17 @@ function adoptDone(prev, next) {
 
 function normalizeBlock(b) {
   if (!b || typeof b !== "object") return null;
+  if (b.type === "gap") {
+    const count = Math.max(1, Math.min(12, Number(b.count) || 1));
+    return { type: "gap", count };
+  }
   if (b.type === "li") {
     const text = String(b.text || "").trim();
     if (!text) return null;
     return { type: "li", id: String(b.id || uid()), text, done: !!b.done };
   }
-  const text = String(b.text || "").trim();
-  if (!text) return null;
+  const text = String(b.text || "").replace(/[ \t]+$/gm, "");
+  if (!text.trim()) return { type: "gap", count: 1 };
   return { type: "p", text };
 }
 
@@ -184,6 +204,10 @@ const CHECK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l5 5 
 function renderBlocks(blocks, interactive) {
   if (!blocks.length) return "";
   return `<div class="detail-blocks">${blocks.map((b) => {
+    if (b.type === "gap") {
+      const n = Math.max(1, Math.min(12, Number(b.count) || 1));
+      return `<div class="detail-gap" style="height:${n * 0.7}em" aria-hidden="true"></div>`;
+    }
     if (b.type === "li") {
       const check = interactive
         ? `<button type="button" class="detail-check" data-bullet="${escapeHtml(b.id)}" aria-label="${b.done ? "Вернуть пункт" : "Отметить пункт сделанным"}">${CHECK}</button>`
@@ -204,7 +228,7 @@ function renderExtra(person, t, editing) {
       <label class="detail-editor detail-compose">
         <span>Пояснение</span>
         <textarea data-details-input rows="10" maxlength="4000" placeholder="Зачем это дело и что не забыть. Новая строка с тире станет пунктом:&#10;— позвонить в кассу&#10;— взять паспорт">${escapeHtml(d.details)}</textarea>
-        <small class="detail-hint">Тире в начале строки станет пунктом. Кружки «сделано» сохраняются сразу, остальное — кнопкой наверху.</small>
+        <small class="detail-hint">Тире в начале строки станет пунктом. Пустая строка по Enter сохранится. Кружки «сделано» пишутся сразу.</small>
       </label>`
     : `<div class="detail-view">${renderBlocks(blocks, true)}</div>`;
 
@@ -219,10 +243,6 @@ function renderExtra(person, t, editing) {
         ${showEditor && blocks.length ? `<button type="button" class="detail-btn" data-cancel-edit>Отмена</button>` : ""}
         ${blocks.length || (showEditor && d.details.trim()) ? `<button type="button" class="detail-btn danger" data-wipe>Удалить пояснение</button>` : ""}
       </div>
-      <label class="detail-editor">
-        <span>Дело</span>
-        <input type="text" data-title-field maxlength="180" value="${escapeHtml(d.title)}" aria-label="Текст дела" />
-      </label>
       <div class="detail-due-row">
         <label class="detail-due">
           <span>Срок</span>
@@ -364,10 +384,8 @@ function captureCard(person, id) {
   const d = ensureDraft(person, id);
   const root = taskRoot(person, id);
   if (!root) return d;
-  const title = root.querySelector("[data-title-field]");
   const due = root.querySelector("[data-due]");
   const ta = root.querySelector("[data-details-input]");
-  if (title) d.title = title.value;
   if (due) d.due = due.value;
   if (ta) d.details = ta.value;
   return d;
@@ -386,14 +404,6 @@ function commitCard(person, id) {
   if (!item) return;
   const key = taskKey(person, id);
   const d = captureCard(person, id);
-  const title = String(d.title || "").replace(/\s+/g, " ").trim();
-  if (!title) {
-    const field = taskRoot(person, id)?.querySelector("[data-title-field]");
-    if (field) field.value = item.text;
-    d.title = item.text;
-    return;
-  }
-  item.text = title;
   item.due = validDue(d.due);
   if (ui.editing === key || taskRoot(person, id)?.querySelector("[data-details-input]")) {
     item.details = adoptDone(item.details, parseDetails(d.details));
@@ -558,12 +568,6 @@ document.querySelectorAll(".board").forEach((board) => {
       return;
     }
     if (e.target.closest("[data-title]")) {
-      if (ui.open.has(taskKey(person, id))) {
-        const field = task.querySelector("[data-title-field]");
-        field?.focus();
-        field?.select();
-        return;
-      }
       startRename(person, id);
       return;
     }
@@ -629,11 +633,6 @@ document.querySelectorAll(".board").forEach((board) => {
       ui.renameDraft.set(taskKey(person, id), titleInline.value);
       return;
     }
-    const titleField = e.target.closest("[data-title-field]");
-    if (titleField) {
-      d.title = titleField.value;
-      return;
-    }
     const due = e.target.closest("[data-due]");
     if (due) {
       d.due = due.value;
@@ -647,24 +646,18 @@ document.querySelectorAll(".board").forEach((board) => {
   });
 
   list.addEventListener("keydown", (e) => {
-    const title = e.target.closest("[data-title-input], [data-title-field]");
+    const title = e.target.closest("[data-title-input]");
     if (title) {
       const taskEl = title.closest(".task");
       if (!taskEl) return;
       if (e.key === "Enter") {
         e.preventDefault();
-        if (title.hasAttribute("data-title-input")) commitRename(person, taskEl.dataset.id);
-        else commitCard(person, taskEl.dataset.id);
+        commitRename(person, taskEl.dataset.id);
         return;
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        if (title.hasAttribute("data-title-input")) cancelRename(person, taskEl.dataset.id);
-        else {
-          const item = findTask(person, taskEl.dataset.id);
-          title.value = item?.text || title.value;
-          ensureDraft(person, taskEl.dataset.id).title = title.value;
-        }
+        cancelRename(person, taskEl.dataset.id);
       }
       return;
     }
@@ -679,8 +672,8 @@ document.querySelectorAll(".board").forEach((board) => {
     e.preventDefault();
     if (!m[2].trim()) {
       const start = pos - line.length;
-      ta.value = ta.value.slice(0, start) + ta.value.slice(pos);
-      try { ta.setSelectionRange(start, start); } catch {}
+      ta.value = ta.value.slice(0, start) + "\n" + ta.value.slice(pos);
+      try { ta.setSelectionRange(start + 1, start + 1); } catch {}
     } else {
       const insert = "\n• ";
       ta.value = ta.value.slice(0, pos) + insert + ta.value.slice(pos);

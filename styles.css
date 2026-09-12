@@ -564,6 +564,7 @@ button, input { font-family: inherit; }
   font-weight: 500;
 }
 .detail-blocks { display: grid; gap: 7px; }
+.detail-gap { min-height: 0.7em; }
 .detail-p {
   margin: 0;
   font-size: 14px;
