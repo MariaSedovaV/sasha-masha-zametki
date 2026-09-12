@@ -762,8 +762,7 @@ function renderWho() {
 
 function renderChrome() {
   document.body.classList.toggle("on-archive", ui.view === "archive");
-  const page = document.querySelector(".brand-page");
-  if (page) page.textContent = ui.view === "archive" ? "Архив" : "Заметки";
+  document.title = ui.view === "archive" ? "Sasha & Masha | Архив" : "Sasha & Masha | Заметки";
   document.querySelectorAll("[data-nav]").forEach((el) => {
     const on = el.dataset.nav === ui.view;
     el.classList.toggle("is-on", on);

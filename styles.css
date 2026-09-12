@@ -78,8 +78,8 @@ button, input { font-family: inherit; }
 }
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
   flex-wrap: wrap;
 }
