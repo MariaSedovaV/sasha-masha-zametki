@@ -7,6 +7,7 @@
     budget: "https://mariasedovav.github.io/sasha-masha-budget/",
     pitanie: "https://mariasedovav.github.io/sasha-masha-pitanie/",
     zametki: "https://mariasedovav.github.io/sasha-masha-zametki/",
+    archive: "https://mariasedovav.github.io/sasha-masha-zametki/#архив",
     remont: "https://mariasedovav.github.io/sasha-masha/remont/",
     goals: HOME + "#цели",
     calendar: HOME + "#календарь",
@@ -110,7 +111,27 @@
   }
   function addNote(person, text) {
     const notes = loadNotes();
-    notes[person].push({ id: uid(), text, done: false, at: Date.now(), updatedAt: Date.now() });
+    let author = person;
+    try {
+      const session = JSON.parse(localStorage.getItem("sasha-session") || "null");
+      if (session?.v === 1 && (session.id === "sasha" || session.id === "masha")) author = session.id;
+      else {
+        const who = localStorage.getItem("sasha-notes-who");
+        if (who === "sasha" || who === "masha") author = who;
+      }
+    } catch {}
+    notes[person].push({
+      id: uid(),
+      text,
+      done: false,
+      at: Date.now(),
+      updatedAt: Date.now(),
+      author,
+      due: "",
+      details: [],
+      archived: false,
+      doneAt: 0,
+    });
     localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
     if (window.SashaCloud && typeof window.SashaCloud.setNotes === "function") {
       window.SashaCloud.setNotes(notes);
@@ -140,6 +161,14 @@
   }
 
   function go(url) {
+    try {
+      const u = new URL(url, location.href);
+      const samePath = location.origin === u.origin && location.pathname.replace(/\/+$/, "") === u.pathname.replace(/\/+$/, "");
+      if (samePath && u.hash && decodeURIComponent(u.hash) !== decodeURIComponent(location.hash || "")) {
+        location.hash = u.hash;
+        return false;
+      }
+    } catch {}
     if (already(url)) {
       if (onPath(/sasha-masha-zametki/) && typeof window.sashaNotesReload === "function") window.sashaNotesReload();
       if (onPath(/sasha-masha-budget/) && typeof window.sashaBudgetReload === "function") window.sashaBudgetReload();
@@ -166,6 +195,10 @@
     }
     if (/(питани|еда|рацион|меню|рецепт)/.test(n)) {
       return { say: already(LINKS.pitanie) ? "Мы уже в питании." : "Открываю питание.", open: LINKS.pitanie };
+    }
+    if (/(архив)/.test(n)) {
+      const onArchive = /архив|archive/i.test(decodeURIComponent(location.hash || ""));
+      return { say: onArchive ? "Мы уже в архиве." : "Открываю архив заметок.", open: LINKS.archive };
     }
     if (/(заметк|список дел|туду|todo)/.test(n) && !/(добав|запиш|напомн)/.test(n)) {
       return { say: already(LINKS.zametki) ? "Мы уже в заметках." : "Открываю заметки.", open: LINKS.zametki };

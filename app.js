@@ -1,5 +1,8 @@
 const THEME_KEY = "sasha-theme";
 const STORE_KEY = "sasha-masha-notes";
+const SESSION_KEY = "sasha-session";
+const WHO_KEY = "sasha-notes-who";
+const ARCHIVE_AFTER = 30 * 24 * 60 * 60 * 1000;
 const MONTHS_WHEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 const BULLET_RE = /^\s*(?:[-–—*•]|—)\s+(.*)$/;
 
@@ -10,6 +13,8 @@ const ui = {
   rename: null,
   renameDraft: new Map(),
   pendingReload: false,
+  view: "active",
+  search: "",
 };
 
 function isBusy() {
@@ -58,6 +63,112 @@ function escapeHtml(s) {
 
 function validDue(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : "";
+}
+
+function personName(id) {
+  return id === "masha" ? "Маша" : "Саша";
+}
+
+function sessionWho() {
+  try {
+    const session = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    if (session?.v === 1 && (session.id === "sasha" || session.id === "masha")) return session.id;
+  } catch {}
+  return "";
+}
+
+function currentAuthor() {
+  const locked = sessionWho();
+  if (locked) return locked;
+  try {
+    const who = localStorage.getItem(WHO_KEY);
+    if (who === "sasha" || who === "masha") return who;
+  } catch {}
+  return "";
+}
+
+function validAuthor(value, fallback) {
+  if (value === "sasha" || value === "masha") return value;
+  if (fallback === "sasha" || fallback === "masha") return fallback;
+  return "";
+}
+
+function currentView() {
+  const hash = decodeURIComponent(String(location.hash || "").replace(/^#/, "")).toLowerCase();
+  return hash === "архив" || hash === "archive" ? "archive" : "active";
+}
+
+function isArchived(t) {
+  if (!t || t.deleted) return false;
+  if (t.archived) return true;
+  if (!t.done) return false;
+  const doneAt = Number(t.doneAt || 0);
+  return doneAt > 0 && Date.now() - doneAt >= ARCHIVE_AFTER;
+}
+
+function liveItems(person) {
+  return state[person].filter((t) => !t.deleted && !isArchived(t)).map(normalizeTask);
+}
+
+function archiveItems(person) {
+  return state[person].filter((t) => !t.deleted && isArchived(t)).map(normalizeTask)
+    .sort((a, b) => Number(b.doneAt || b.updatedAt || 0) - Number(a.doneAt || a.updatedAt || 0));
+}
+
+function matchesSearch(t, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  const blob = [
+    t.text,
+    personName(t.author),
+    serializeDetails(t.details || []),
+  ].join(" ").toLowerCase();
+  return blob.includes(q);
+}
+
+function formatDoneAt(ms) {
+  const n = Number(ms || 0);
+  if (!n) return "";
+  const d = new Date(n);
+  return "сделано " + d.getDate() + " " + MONTHS_WHEN[d.getMonth()];
+}
+
+function renameState(key, item) {
+  const raw = ui.renameDraft.get(key);
+  if (raw && typeof raw === "object") return { text: raw.text ?? item?.text ?? "", due: validDue(raw.due || item?.due) };
+  if (typeof raw === "string") return { text: raw, due: item?.due || "" };
+  return { text: item?.text || "", due: item?.due || "" };
+}
+
+function settleState(next) {
+  const now = Date.now();
+  let changed = false;
+  ["sasha", "masha"].forEach((person) => {
+    (next[person] || []).forEach((t) => {
+      if (!t || t.deleted) return;
+      const author = validAuthor(t.author, person);
+      if (t.author !== author) {
+        t.author = author;
+        t.updatedAt = Math.max(Number(t.updatedAt || 0), now);
+        changed = true;
+      }
+      if (t.done && !Number(t.doneAt || 0)) {
+        t.doneAt = Number(t.updatedAt || t.at || now);
+        changed = true;
+      }
+      if (!t.done && (t.archived || t.doneAt)) {
+        t.archived = false;
+        t.doneAt = 0;
+        changed = true;
+      }
+      if (t.done && !t.archived && Number(t.doneAt || 0) && now - Number(t.doneAt) >= ARCHIVE_AFTER) {
+        t.archived = true;
+        t.updatedAt = now;
+        changed = true;
+      }
+    });
+  });
+  return changed;
 }
 
 function convertDashLines(text) {
@@ -153,7 +264,7 @@ function normalizeTask(t) {
   if (Array.isArray(t.details)) details = t.details.map(normalizeBlock).filter(Boolean);
   else if (typeof t.details === "string") details = parseDetails(t.details);
   else if (typeof t.note === "string" && t.note.trim()) details = parseDetails(t.note);
-  return { ...t, due: validDue(t.due), details };
+  return { ...t, due: validDue(t.due), details, author: validAuthor(t.author, ""), doneAt: Number(t.doneAt || 0) || 0, archived: !!t.archived };
 }
 
 function load() {
@@ -172,6 +283,7 @@ function load() {
 }
 
 function save(state) {
+  settleState(state);
   localStorage.setItem(STORE_KEY, JSON.stringify({
     sasha: state.sasha.filter((t) => !t.deleted),
     masha: state.masha.filter((t) => !t.deleted),
@@ -197,6 +309,10 @@ function formatDue(iso) {
   if (diff === 0) return { label: "сегодня", cls: "is-today", title: "срок сегодня" };
   if (diff === 1) return { label: "завтра", cls: "is-soon", title: "срок завтра" };
   return { label, cls: "", title: "срок " + label };
+}
+
+function archiveCount() {
+  return archiveItems("sasha").length + archiveItems("masha").length;
 }
 
 const CHECK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l5 5 9-11"/></svg>`;
@@ -262,15 +378,26 @@ function renderExtra(person, t, editing) {
 function renderBoard(person) {
   captureOpenCards();
   const root = document.querySelector(`.board[data-person="${person}"]`);
-  const items = state[person].filter((t) => !t.deleted).map(normalizeTask);
-  const open = items.filter((t) => !t.done).length;
+  const archivedView = ui.view === "archive";
+  const items = (archivedView ? archiveItems(person) : liveItems(person)).filter((t) => matchesSearch(t, archivedView ? ui.search : ""));
+  const open = liveItems(person).filter((t) => !t.done).length;
+  const stored = archiveItems(person).length;
   const list = $("[data-list]", root);
   const count = $("[data-count]", root);
-  count.textContent = `${open} ${plural(open, "открытое", "открытых", "открытых")}`;
+  count.textContent = archivedView
+    ? `${stored} ${plural(stored, "дело", "дела", "дел")} в архиве`
+    : `${open} ${plural(open, "открытое", "открытых", "открытых")}`;
 
-  const ordered = [...items.filter((t) => !t.done), ...items.filter((t) => t.done)];
+  const ordered = archivedView
+    ? items
+    : [...items.filter((t) => !t.done), ...items.filter((t) => t.done)];
   if (!ordered.length) {
-    list.innerHTML = `<li class="empty">Пока пусто. Напишите первое дело — и оно останется здесь.</li>`;
+    const empty = archivedView
+      ? (ui.search.trim()
+        ? `Ничего не нашлось по запросу «${escapeHtml(ui.search.trim())}».`
+        : "Архив пока пуст. Сделанные дела появятся здесь через месяц.")
+      : "Пока пусто. Напишите первое дело — и оно останется здесь.";
+    list.innerHTML = `<li class="empty">${empty}</li>`;
     return;
   }
   list.innerHTML = ordered.map((t) => {
@@ -280,15 +407,23 @@ function renderBoard(person) {
     const renaming = ui.rename === key;
     const hasExtra = Boolean(t.due) || (t.details && t.details.length);
     const due = t.due ? formatDue(t.due) : null;
-    const titleValue = renaming ? (ui.renameDraft.get(key) ?? t.text) : t.text;
+    const draft = renameState(key, t);
+    const author = validAuthor(t.author, person);
+    const doneLabel = formatDoneAt(t.doneAt);
     return `
-    <li class="task ${t.done ? "done" : ""} ${opened ? "open" : ""} ${renaming ? "renaming" : ""}" data-id="${t.id}">
-      <button type="button" class="check" aria-label="${t.done ? "Вернуть в открытые" : "Отметить сделанным"}">${CHECK}</button>
+    <li class="task ${t.done ? "done" : ""} ${opened ? "open" : ""} ${renaming ? "renaming" : ""} ${archivedView ? "in-archive" : ""}" data-id="${t.id}">
+      ${archivedView
+        ? `<span class="check fake" aria-hidden="true">${CHECK}</span>`
+        : `<button type="button" class="check" aria-label="${t.done ? "Вернуть в открытые" : "Отметить сделанным"}">${CHECK}</button>`}
       <div class="task-main">
         ${renaming
           ? `<div class="task-rename">
-              <input class="task-title-input" data-title-input maxlength="180" value="${escapeHtml(titleValue)}" aria-label="Текст дела" />
-              <button type="button" class="task-rename-save" data-rename-save aria-label="Сохранить название">${CHECK}</button>
+              <input class="task-title-input" data-title-input maxlength="180" value="${escapeHtml(draft.text)}" aria-label="Текст дела" />
+              <label class="task-rename-due">
+                <span>Срок</span>
+                <input type="date" data-rename-due value="${escapeHtml(draft.due)}" />
+              </label>
+              <button type="button" class="task-rename-save" data-rename-save aria-label="Сохранить название и срок">${CHECK}</button>
             </div>`
           : `<button type="button" class="task-hit ${hasExtra ? "has-extra" : ""}" data-expand aria-expanded="${opened ? "true" : "false"}" title="Нажмите, чтобы открыть пояснение и срок">
               <span class="task-hit-top">
@@ -296,9 +431,17 @@ function renderBoard(person) {
                 ${CHEVRON}
               </span>
             </button>`}
-        ${due ? `<span class="task-due ${due.cls}" ${renaming ? "" : "data-expand"} title="${escapeHtml(due.title)}">${escapeHtml(due.label)}</span>` : ""}
+        <div class="task-meta">
+          <span class="task-author ${author}">${escapeHtml(personName(author))}</span>
+          ${due ? `<span class="task-due ${due.cls}" ${renaming ? "" : "data-expand"} title="${escapeHtml(due.title)}">${escapeHtml(due.label)}</span>` : ""}
+          ${archivedView && doneLabel ? `<span class="task-done-at">${escapeHtml(doneLabel)}</span>` : ""}
+        </div>
+        ${archivedView && !renaming ? `<label class="task-restore">
+            <span>Новый срок</span>
+            <input type="date" data-restore-due aria-label="Новый срок, чтобы вернуть дело" />
+          </label>` : ""}
       </div>
-      ${renaming ? `<span class="task-icon-slot" aria-hidden="true"></span>` : `<button type="button" class="task-rename-btn" data-rename aria-label="Изменить название" title="Изменить название">${PENCIL}</button>`}
+      ${renaming ? `<span class="task-icon-slot" aria-hidden="true"></span>` : `<button type="button" class="task-rename-btn" data-rename aria-label="Изменить название и срок" title="Изменить название и срок">${PENCIL}</button>`}
       <button type="button" class="task-del" aria-label="Удалить">×</button>
       ${opened ? renderExtra(person, t, editing) : ""}
     </li>`;
@@ -326,6 +469,9 @@ function addTask(person, text) {
     updatedAt: Date.now(),
     due: "",
     details: [],
+    author: currentAuthor() || person,
+    doneAt: 0,
+    archived: false,
   });
   save(state);
   renderBoard(person);
@@ -333,11 +479,17 @@ function addTask(person, text) {
 
 function toggleTask(person, id) {
   const item = findTask(person, id);
-  if (!item) return;
+  if (!item || isArchived(item)) return;
   item.done = !item.done;
+  if (item.done) {
+    item.doneAt = Date.now();
+  } else {
+    item.doneAt = 0;
+    item.archived = false;
+  }
   touch(item);
   save(state);
-  renderBoard(person);
+  renderAll();
 }
 
 function deleteTask(person, id) {
@@ -351,12 +503,13 @@ function deleteTask(person, id) {
   if (ui.editing === taskKey(person, id)) ui.editing = null;
   if (ui.rename === taskKey(person, id)) ui.rename = null;
   save(state);
-  renderBoard(person);
+  renderAll();
 }
 
 function clearBoard(person) {
   const now = Date.now();
   state[person].forEach((t) => {
+    if (t.deleted || isArchived(t)) return;
     t.deleted = true;
     t.updatedAt = now;
   });
@@ -368,6 +521,29 @@ function clearBoard(person) {
   });
   save(state);
   renderBoard(person);
+}
+
+function restoreTask(person, id, due) {
+  const item = findTask(person, id);
+  const next = validDue(due);
+  if (!item || !next) return;
+  item.due = next;
+  item.done = false;
+  item.archived = false;
+  item.doneAt = 0;
+  ui.open.delete(taskKey(person, id));
+  ui.drafts.delete(taskKey(person, id));
+  if (ui.rename === taskKey(person, id)) {
+    ui.rename = null;
+    ui.renameDraft.delete(taskKey(person, id));
+  }
+  touch(item);
+  save(state);
+  if (currentView() === "archive") {
+    location.hash = "дела";
+    return;
+  }
+  renderAll();
 }
 
 function ensureDraft(person, id) {
@@ -431,7 +607,7 @@ function startRename(person, id) {
   const item = findTask(person, id);
   if (!item) return;
   ui.rename = key;
-  if (!ui.renameDraft.has(key)) ui.renameDraft.set(key, item.text);
+  if (!ui.renameDraft.has(key)) ui.renameDraft.set(key, { text: item.text, due: item.due || "" });
   renderBoard(person);
   const input = document.querySelector(`.board[data-person="${person}"] .task[data-id="${id}"] [data-title-input]`);
   if (!input) return;
@@ -443,18 +619,43 @@ function commitRename(person, id) {
   const key = taskKey(person, id);
   if (ui.rename !== key) return;
   const root = document.querySelector(`.board[data-person="${person}"]`);
-  const input = root?.querySelector(`.task[data-id="${CSS.escape(id)}"] [data-title-input]`);
-  const raw = input ? input.value : ui.renameDraft.get(key);
+  const card = root?.querySelector(`.task[data-id="${CSS.escape(id)}"]`);
+  const input = card?.querySelector("[data-title-input]");
+  const dueInput = card?.querySelector("[data-rename-due]");
+  const draft = renameState(key, findTask(person, id));
+  const raw = input ? input.value : draft.text;
+  const due = dueInput ? dueInput.value : draft.due;
   const item = findTask(person, id);
   const clean = String(raw || "").replace(/\s+/g, " ").trim();
   ui.rename = null;
   ui.renameDraft.delete(key);
-  if (item && clean && clean !== item.text) {
-    item.text = clean;
-    touch(item);
-    save(state);
+  if (item && clean) {
+    const nextDue = validDue(due);
+    let changed = false;
+    if (clean !== item.text) {
+      item.text = clean;
+      changed = true;
+    }
+    if (nextDue !== (item.due || "")) {
+      item.due = nextDue;
+      changed = true;
+    }
+    if (isArchived(item) && nextDue) {
+      item.done = false;
+      item.archived = false;
+      item.doneAt = 0;
+      changed = true;
+    }
+    if (changed) {
+      touch(item);
+      save(state);
+    }
   }
-  renderBoard(person);
+  if (item && !item.done && !item.archived && currentView() === "archive") {
+    location.hash = "дела";
+    return;
+  }
+  renderAll();
 }
 
 function cancelRename(person, id) {
@@ -537,7 +738,64 @@ function fitDetailsEditor(ta) {
   ta.style.height = Math.max(min, Math.min(max, ta.scrollHeight + 2)) + "px";
 }
 
+function disarmDelete(btn) {
+  btn.classList.remove("armed");
+  btn.setAttribute("aria-label", "Удалить");
+  btn.textContent = "×";
+}
+
+function renderWho() {
+  const box = document.querySelector("[data-who-box]");
+  if (!box) return;
+  const locked = sessionWho();
+  const who = currentAuthor();
+  if (locked) {
+    box.innerHTML = `<span class="who-now-label">пишет</span><span class="who-chip ${locked} is-on">${escapeHtml(personName(locked))}</span>`;
+    return;
+  }
+  box.innerHTML = `
+    <span class="who-now-label">пишет</span>
+    <button type="button" class="who-chip sasha${who === "sasha" ? " is-on" : ""}" data-who="sasha">Саша</button>
+    <button type="button" class="who-chip masha${who === "masha" ? " is-on" : ""}" data-who="masha">Маша</button>
+  `;
+}
+
+function renderChrome() {
+  document.body.classList.toggle("on-archive", ui.view === "archive");
+  const page = document.querySelector(".brand-page");
+  if (page) page.textContent = ui.view === "archive" ? "Архив" : "Заметки";
+  document.querySelectorAll("[data-nav]").forEach((el) => {
+    const on = el.dataset.nav === ui.view;
+    el.classList.toggle("is-on", on);
+    el.setAttribute("aria-current", on ? "page" : "false");
+  });
+  const bar = document.querySelector("[data-archive-bar]");
+  if (bar) bar.hidden = ui.view !== "archive";
+  const search = document.querySelector("[data-archive-search]");
+  if (search && document.activeElement !== search) search.value = ui.search;
+  const n = archiveCount();
+  document.querySelectorAll("[data-archive-count]").forEach((el) => {
+    el.hidden = n < 1;
+    el.textContent = String(n);
+  });
+  renderWho();
+}
+
+function renderAll() {
+  renderBoard("sasha");
+  renderBoard("masha");
+  renderChrome();
+}
+
+function applyView() {
+  ui.view = currentView();
+  if (ui.view !== "archive") ui.search = "";
+  renderAll();
+}
+
 const state = load();
+ui.view = currentView();
+if (settleState(state)) save(state);
 applyTheme(currentTheme());
 document.getElementById("theme-toggle").addEventListener("click", () => {
   applyTheme(currentTheme() === "light" ? "dark" : "light");
@@ -562,6 +820,14 @@ document.querySelectorAll(".board").forEach((board) => {
     if (!task) return;
     const id = task.dataset.id;
     if (e.target.closest(".task-del")) {
+      const btn = e.target.closest(".task-del");
+      if (!btn.classList.contains("armed")) {
+        list.querySelectorAll(".task-del.armed").forEach(disarmDelete);
+        btn.classList.add("armed");
+        btn.setAttribute("aria-label", "Точно удалить?");
+        btn.textContent = "Точно?";
+        return;
+      }
       deleteTask(person, id);
       return;
     }
@@ -637,7 +903,14 @@ document.querySelectorAll(".board").forEach((board) => {
     const d = ensureDraft(person, id);
     const titleInline = e.target.closest("[data-title-input]");
     if (titleInline) {
-      ui.renameDraft.set(taskKey(person, id), titleInline.value);
+      const prev = renameState(taskKey(person, id), findTask(person, id));
+      ui.renameDraft.set(taskKey(person, id), { text: titleInline.value, due: prev.due });
+      return;
+    }
+    const renameDue = e.target.closest("[data-rename-due]");
+    if (renameDue) {
+      const prev = renameState(taskKey(person, id), findTask(person, id));
+      ui.renameDraft.set(taskKey(person, id), { text: prev.text, due: renameDue.value });
       return;
     }
     const due = e.target.closest("[data-due]");
@@ -653,7 +926,7 @@ document.querySelectorAll(".board").forEach((board) => {
   });
 
   list.addEventListener("keydown", (e) => {
-    const title = e.target.closest("[data-title-input]");
+    const title = e.target.closest("[data-title-input], [data-rename-due]");
     if (title) {
       const taskEl = title.closest(".task");
       if (!taskEl) return;
@@ -693,6 +966,12 @@ document.querySelectorAll(".board").forEach((board) => {
   });
 
   list.addEventListener("change", (e) => {
+    const restore = e.target.closest("[data-restore-due]");
+    if (restore) {
+      const taskEl = restore.closest(".task");
+      if (taskEl) restoreTask(person, taskEl.dataset.id, restore.value);
+      return;
+    }
     const due = e.target.closest("[data-due]");
     if (!due) return;
     const taskEl = due.closest(".task");
@@ -701,7 +980,7 @@ document.querySelectorAll(".board").forEach((board) => {
 
   const clearBtn = $("[data-clear]", board);
   clearBtn.addEventListener("click", () => {
-    if (!state[person].filter((t) => !t.deleted).length) return;
+    if (!liveItems(person).length) return;
     if (!clearBtn.classList.contains("armed")) {
       document.querySelectorAll(".clear-btn.armed").forEach((b) => {
         b.classList.remove("armed");
@@ -718,6 +997,14 @@ document.querySelectorAll(".board").forEach((board) => {
 });
 
 document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-who]")) {
+    const who = e.target.closest("[data-who]").dataset.who;
+    if (!sessionWho() && (who === "sasha" || who === "masha")) {
+      localStorage.setItem(WHO_KEY, who);
+      renderWho();
+    }
+    return;
+  }
   if (e.target.closest("[data-clear]")) return;
   document.querySelectorAll(".clear-btn.armed").forEach((b) => {
     b.classList.remove("armed");
@@ -728,6 +1015,8 @@ document.addEventListener("click", (e) => {
     b.classList.remove("armed");
     b.textContent = "Удалить пояснение";
   });
+  if (e.target.closest(".task-del")) return;
+  document.querySelectorAll(".task-del.armed").forEach(disarmDelete);
 });
 
 function speechEngine() {
@@ -823,8 +1112,8 @@ function applyCloudState() {
   const fresh = load();
   state.sasha = fresh.sasha;
   state.masha = fresh.masha;
-  renderBoard("sasha");
-  renderBoard("masha");
+  if (settleState(state)) save(state);
+  renderAll();
   renderSync();
 }
 
@@ -840,4 +1129,13 @@ window.sashaNotesReload = function () {
 if (window.SashaCloud && typeof window.SashaCloud.subscribe === "function") {
   window.SashaCloud.subscribe(renderSync);
 }
+
+document.querySelector("[data-archive-search]")?.addEventListener("input", (e) => {
+  ui.search = e.target.value || "";
+  renderBoard("sasha");
+  renderBoard("masha");
+});
+
+window.addEventListener("hashchange", applyView);
+applyView();
 renderSync();
