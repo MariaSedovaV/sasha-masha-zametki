@@ -1104,7 +1104,8 @@ function startVoice(board, person) {
   };
   rec.onerror = (event) => {
     if (event.error === "not-allowed") {
-      window.alert("Нужно разрешить микрофон в настройках браузера — иначе голос не услышать.");
+      try { window.SashaMic?.forget?.(); } catch {}
+      window.alert("Разрешите микрофон один раз — дальше браузер запомнит. Значок замка в адресной строке → Микрофон → Разрешить.");
     }
     stopMic();
   };
@@ -1119,6 +1120,7 @@ function startVoice(board, person) {
     if (activeMic && activeMic.rec === rec) activeMic = null;
   };
   activeMic = { rec, btn };
+  try { window.SashaMic?.unlock?.(); } catch {}
   try { rec.start(); } catch { stopMic(); }
 }
 
