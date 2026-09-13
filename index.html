@@ -94,6 +94,17 @@
   <script src="https://mariasedovav.github.io/sasha-masha/voice-mic.js?v=1"></script>
   <script src="sync.js?v=13"></script>
   <script src="app.js?v=26"></script>
-  <script src="assistant.js?v=18"></script>
+  <script>
+    try { localStorage.removeItem("sasha-butler-gemini"); } catch (e) {}
+    (function () {
+      function wipe() {
+        document.querySelectorAll("#assist-key,#assist-key-row,#assist-key-hint,.assist-key,.assist-key-row,.assist-key-hint").forEach(function (n) { n.remove(); });
+      }
+      wipe();
+      document.addEventListener("DOMContentLoaded", wipe);
+      new MutationObserver(wipe).observe(document.documentElement, { childList: true, subtree: true });
+    })();
+  </script>
+  <script src="assistant.js?v=19"></script>
 </body>
 </html>
